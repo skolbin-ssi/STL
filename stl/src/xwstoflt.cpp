@@ -3,10 +3,11 @@
 
 // _WStoflt function
 
-#include "xmath.h"
-#include <locale.h>
-#include <wchar.h>
-#include <wctype.h>
+#include <clocale>
+#include <cwchar>
+#include <cwctype>
+
+#include "xmath.hpp"
 
 _EXTERN_C_UNLESS_PURE
 
@@ -14,8 +15,9 @@ constexpr int _Base   = 10; // decimal
 constexpr int _Ndig   = 9; // decimal digits per long element
 constexpr int _Maxsig = 5 * _Ndig; // maximum significant digits to keep
 
-int _WStoflt(const wchar_t* s0, const wchar_t* s, wchar_t** endptr, long lo[],
-    int maxsig) { // convert wide string to array of long plus exponent
+_In_range_(0, maxsig) int _WStoflt(const wchar_t* s0, const wchar_t* s, wchar_t** endptr,
+    _Out_writes_(maxsig) long lo[], _In_range_(1, 4) int maxsig) {
+    // convert wide string to array of long plus exponent
     char buf[_Maxsig + 1]; // worst case, with room for rounding digit
     int nsig = 0; // number of significant digits seen
     int seen = 0; // any valid field characters seen
@@ -36,7 +38,7 @@ int _WStoflt(const wchar_t* s0, const wchar_t* s, wchar_t** endptr, long lo[],
 
     while (iswdigit(*s)) {
         if (nsig <= maxsig) {
-            buf[nsig++] = (char) (*s - L'0'); // accumulate a digit
+            buf[nsig++] = static_cast<char>(*s - L'0'); // accumulate a digit
         } else {
             ++lo[0]; // too many digits, just scale exponent
         }
@@ -59,7 +61,7 @@ int _WStoflt(const wchar_t* s0, const wchar_t* s, wchar_t** endptr, long lo[],
 
     while (iswdigit(*s)) {
         if (nsig <= maxsig) { // accumulate a fraction digit
-            buf[nsig++] = (char) (*s - L'0');
+            buf[nsig++] = static_cast<char>(*s - L'0');
             --lo[0];
         }
 
@@ -125,7 +127,7 @@ int _WStoflt(const wchar_t* s0, const wchar_t* s, wchar_t** endptr, long lo[],
     }
 
     if (endptr) {
-        *endptr = (wchar_t*) (seen ? s : s0); // roll back if bad parse
+        *endptr = const_cast<wchar_t*>(seen ? s : s0); // roll back if bad parse
     }
 
     return word;

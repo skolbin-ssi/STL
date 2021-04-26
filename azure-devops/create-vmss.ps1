@@ -11,19 +11,26 @@ system. See https://docs.microsoft.com/en-us/azure/virtual-machine-scale-sets/ov
 for more information.
 
 This script assumes you have installed Azure tools into PowerShell by following the instructions
-at https://docs.microsoft.com/en-us/powershell/azure/install-az-ps?view=azps-3.6.1
+at https://docs.microsoft.com/en-us/powershell/azure/install-az-ps
 or are running from Azure Cloud Shell.
 #>
 
+$ErrorActionPreference = 'Stop'
+
+# https://aka.ms/azps-changewarnings
+$Env:SuppressAzurePowerShellBreakingChangeWarnings = 'true'
+
 $Location = 'westus2'
 $Prefix = 'StlBuild-' + (Get-Date -Format 'yyyy-MM-dd')
-$VMSize = 'Standard_F16s_v2'
+$VMSize = 'Standard_D32ds_v4'
 $ProtoVMName = 'PROTOTYPE'
 $LiveVMPrefix = 'BUILD'
-$WindowsServerSku = '2019-Datacenter'
+$ImagePublisher = 'MicrosoftWindowsDesktop'
+$ImageOffer = 'Windows-10'
+$ImageSku = '20h2-ent-g2'
 
 $ProgressActivity = 'Creating Scale Set'
-$TotalProgress = 11
+$TotalProgress = 12
 $CurrentProgress = 1
 
 <#
@@ -160,6 +167,14 @@ function Wait-Shutdown {
 ####################################################################################################
 Write-Progress `
   -Activity $ProgressActivity `
+  -Status 'Setting the subscription context' `
+  -PercentComplete (100 / $TotalProgress * $CurrentProgress++)
+
+Set-AzContext -SubscriptionName CPP_STL_GitHub
+
+####################################################################################################
+Write-Progress `
+  -Activity $ProgressActivity `
   -Status 'Creating resource group' `
   -PercentComplete (100 / $TotalProgress * $CurrentProgress++)
 
@@ -211,20 +226,20 @@ $denyEverythingElse = New-AzNetworkSecurityRuleConfig `
   -DestinationAddressPrefix * `
   -DestinationPortRange *
 
-$NetworkSecurityGroupName = $ResourceGroupName + 'NetworkSecurity'
+$NetworkSecurityGroupName = $ResourceGroupName + '-NetworkSecurity'
 $NetworkSecurityGroup = New-AzNetworkSecurityGroup `
   -Name $NetworkSecurityGroupName `
   -ResourceGroupName $ResourceGroupName `
   -Location $Location `
   -SecurityRules @($allowHttp, $allowDns, $denyEverythingElse)
 
-$SubnetName = $ResourceGroupName + 'Subnet'
+$SubnetName = $ResourceGroupName + '-Subnet'
 $Subnet = New-AzVirtualNetworkSubnetConfig `
   -Name $SubnetName `
   -AddressPrefix "10.0.0.0/16" `
   -NetworkSecurityGroup $NetworkSecurityGroup
 
-$VirtualNetworkName = $ResourceGroupName + 'Network'
+$VirtualNetworkName = $ResourceGroupName + '-Network'
 $VirtualNetwork = New-AzVirtualNetwork `
   -Name $VirtualNetworkName `
   -ResourceGroupName $ResourceGroupName `
@@ -237,7 +252,7 @@ Write-Progress `
   -Activity 'Creating prototype VM' `
   -PercentComplete (100 / $TotalProgress * $CurrentProgress++)
 
-$NicName = $ResourceGroupName + 'NIC'
+$NicName = $ResourceGroupName + '-NIC'
 $Nic = New-AzNetworkInterface `
   -Name $NicName `
   -ResourceGroupName $ResourceGroupName `
@@ -255,9 +270,9 @@ $VM = Set-AzVMOperatingSystem `
 $VM = Add-AzVMNetworkInterface -VM $VM -Id $Nic.Id
 $VM = Set-AzVMSourceImage `
   -VM $VM `
-  -PublisherName 'MicrosoftWindowsServer' `
-  -Offer 'WindowsServer' `
-  -Skus $WindowsServerSku `
+  -PublisherName $ImagePublisher `
+  -Offer $ImageOffer `
+  -Skus $ImageSku `
   -Version latest
 
 $VM = Set-AzVMBootDiagnostic -VM $VM -Disable
@@ -272,12 +287,14 @@ Write-Progress `
   -Status 'Running provisioning script provision-image.ps1 in VM' `
   -PercentComplete (100 / $TotalProgress * $CurrentProgress++)
 
-Invoke-AzVMRunCommand `
+$ProvisionImageResult = Invoke-AzVMRunCommand `
   -ResourceGroupName $ResourceGroupName `
   -VMName $ProtoVMName `
   -CommandId 'RunPowerShellScript' `
   -ScriptPath "$PSScriptRoot\provision-image.ps1" `
   -Parameter @{AdminUserPassword = $AdminPW }
+
+Write-Host "provision-image.ps1 output: $($ProvisionImageResult.value.Message)"
 
 ####################################################################################################
 Write-Progress `
@@ -325,7 +342,7 @@ Set-AzVM `
 
 $VM = Get-AzVM -ResourceGroupName $ResourceGroupName -Name $ProtoVMName
 $PrototypeOSDiskName = $VM.StorageProfile.OsDisk.Name
-$ImageConfig = New-AzImageConfig -Location $Location -SourceVirtualMachineId $VM.ID
+$ImageConfig = New-AzImageConfig -Location $Location -SourceVirtualMachineId $VM.ID -HyperVGeneration 'V2'
 $Image = New-AzImage -Image $ImageConfig -ImageName $ProtoVMName -ResourceGroupName $ResourceGroupName
 
 ####################################################################################################
@@ -343,9 +360,9 @@ Write-Progress `
   -Status 'Creating scale set' `
   -PercentComplete (100 / $TotalProgress * $CurrentProgress++)
 
-$VmssIpConfigName = $ResourceGroupName + 'VmssIpConfig'
+$VmssIpConfigName = $ResourceGroupName + '-VmssIpConfig'
 $VmssIpConfig = New-AzVmssIpConfig -SubnetId $Nic.IpConfigurations[0].Subnet.Id -Primary -Name $VmssIpConfigName
-$VmssName = $ResourceGroupName + 'Vmss'
+$VmssName = $ResourceGroupName + '-Vmss'
 $Vmss = New-AzVmssConfig `
   -Location $Location `
   -SkuCapacity 0 `
@@ -387,6 +404,4 @@ New-AzVmss `
 Write-Progress -Activity $ProgressActivity -Completed
 Write-Host "Location: $Location"
 Write-Host "Resource group name: $ResourceGroupName"
-Write-Host "User name: AdminUser"
-Write-Host "Using generated password: $AdminPW"
 Write-Host 'Finished!'

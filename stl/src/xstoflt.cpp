@@ -3,10 +3,11 @@
 
 // _Stoflt function
 
-#include "xmath.h"
-#include <ctype.h>
-#include <locale.h>
-#include <stdlib.h>
+#include <cctype>
+#include <clocale>
+#include <cstdlib>
+
+#include "xmath.hpp"
 
 _EXTERN_C_UNLESS_PURE
 
@@ -14,8 +15,9 @@ constexpr int _Base   = 10; // decimal
 constexpr int _Ndig   = 9; // decimal digits per long word
 constexpr int _Maxsig = 5 * _Ndig; // maximum significant digits to keep
 
-int _Stoflt(const char* s0, const char* s, char** endptr, long lo[],
-    int maxsig) { // convert string to array of long plus exponent
+_In_range_(0, maxsig) int _Stoflt(
+    const char* s0, const char* s, char** endptr, _Out_writes_(maxsig) long lo[], _In_range_(1, 4) int maxsig) {
+    // convert string to array of long plus exponent
     char buf[_Maxsig + 1]; // worst case, with room for rounding digit
     int nsig   = 0; // number of significant digits seen
     int seen   = 0; // any valid field characters seen
@@ -35,9 +37,9 @@ int _Stoflt(const char* s0, const char* s, char** endptr, long lo[],
         ++s;
     }
 
-    while (isdigit((unsigned char) *s)) {
+    while (isdigit(static_cast<unsigned char>(*s))) {
         if (nsig < maxsig) {
-            buf[nsig++] = (char) (*s - '0'); // accumulate a digit
+            buf[nsig++] = static_cast<char>(*s - '0'); // accumulate a digit
         } else { // just scale exponent and note nonzero digits
             ++lo[0];
             if (*s != '0') {
@@ -59,9 +61,9 @@ int _Stoflt(const char* s0, const char* s, char** endptr, long lo[],
         }
     }
 
-    for (; isdigit((unsigned char) *s); ++s, seen = 1) {
+    for (; isdigit(static_cast<unsigned char>(*s)); ++s, seen = 1) {
         if (nsig < maxsig) { // accumulate a fraction digit
-            buf[nsig++] = (char) (*s - '0');
+            buf[nsig++] = static_cast<char>(*s - '0');
             --lo[0];
         } else if (*s != '0') {
             sticky = 1;
@@ -99,9 +101,9 @@ int _Stoflt(const char* s0, const char* s, char** endptr, long lo[],
             int eseen        = 0;
             long lexp        = 0;
 
-            for (; isdigit((unsigned char) *s); ++s, eseen = 1) {
+            for (; isdigit(static_cast<unsigned char>(*s)); ++s, eseen = 1) {
                 if (lexp < 100000000) { // else overflow
-                    lexp = lexp * 10 + (unsigned char) *s - '0';
+                    lexp = lexp * 10 + static_cast<unsigned char>(*s) - '0';
                 }
             }
 
@@ -121,7 +123,7 @@ int _Stoflt(const char* s0, const char* s, char** endptr, long lo[],
     }
 
     if (endptr) {
-        *endptr = (char*) (seen ? s : s0); // roll back if bad parse
+        *endptr = const_cast<char*>(seen ? s : s0); // roll back if bad parse
     }
 
     return word;

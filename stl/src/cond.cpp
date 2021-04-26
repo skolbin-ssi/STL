@@ -3,13 +3,13 @@
 
 // condition variable functions
 
-#include "primitives.h"
+#include <cstdlib>
 #include <internal_shared.h>
-#include <limits.h>
-#include <stdlib.h>
 #include <type_traits>
 #include <xthreads.h>
 #include <xtimec.h>
+
+#include "primitives.hpp"
 
 struct _Cnd_internal_imp_t { // condition variable implementation for ConcRT
     std::aligned_storage_t<Concurrency::details::stl_condition_variable_max_size,
@@ -23,8 +23,7 @@ struct _Cnd_internal_imp_t { // condition variable implementation for ConcRT
 };
 
 static_assert(sizeof(_Cnd_internal_imp_t) <= _Cnd_internal_imp_size, "incorrect _Cnd_internal_imp_size");
-static_assert(std::alignment_of<_Cnd_internal_imp_t>::value <= _Cnd_internal_imp_alignment,
-    "incorrect _Cnd_internal_imp_alignment");
+static_assert(alignof(_Cnd_internal_imp_t) <= _Cnd_internal_imp_alignment, "incorrect _Cnd_internal_imp_alignment");
 
 void _Cnd_init_in_situ(const _Cnd_t cond) { // initialize condition variable in situ
     Concurrency::details::create_stl_condition_variable(cond->_get_cv());

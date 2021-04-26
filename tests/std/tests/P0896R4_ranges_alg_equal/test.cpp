@@ -7,7 +7,7 @@
 #include <concepts>
 #include <cstdlib>
 #include <ranges>
-//
+
 #include <range_algorithm_support.hpp>
 
 constexpr void smoke_test() {
@@ -28,10 +28,10 @@ constexpr void smoke_test() {
     }
     {
         // Validate non-sized ranges
-        auto result = equal(move_only_range{x}, move_only_range{y}, cmp, get_first, get_second);
+        auto result = equal(basic_borrowed_range{x}, basic_borrowed_range{y}, cmp, get_first, get_second);
         STATIC_ASSERT(same_as<decltype(result), bool>);
         assert(result);
-        assert(!equal(move_only_range{x}, move_only_range{y}, cmp, get_first, get_first));
+        assert(!equal(basic_borrowed_range{x}, basic_borrowed_range{y}, cmp, get_first, get_first));
     }
     {
         // Validate sized iterator + sentinel pairs
@@ -42,24 +42,34 @@ constexpr void smoke_test() {
     }
     {
         // Validate non-sized iterator + sentinel pairs
-        move_only_range wrapped_x{x};
-        move_only_range wrapped_y{y};
+        basic_borrowed_range wrapped_x{x};
+        basic_borrowed_range wrapped_y{y};
         auto result =
             equal(wrapped_x.begin(), wrapped_x.end(), wrapped_y.begin(), wrapped_y.end(), cmp, get_first, get_second);
         STATIC_ASSERT(same_as<decltype(result), bool>);
         assert(result);
-        wrapped_x = move_only_range{x};
-        wrapped_y = move_only_range{y};
+    }
+    {
+        basic_borrowed_range wrapped_x{x};
+        basic_borrowed_range wrapped_y{y};
         assert(
             !equal(wrapped_x.begin(), wrapped_x.end(), wrapped_y.begin(), wrapped_y.end(), cmp, get_first, get_first));
     }
     {
         // calls with sized ranges of differing size perform no comparisons nor projections
-        constexpr auto proj  = [](auto &&) -> int { abort(); };
-        constexpr auto comp  = [](auto&&, auto &&) -> bool { abort(); };
+        constexpr auto proj  = [](auto&&) -> int { abort(); };
+        constexpr auto comp  = [](auto&&, auto&&) -> bool { abort(); };
         int const one_int[]  = {0};
         int const two_ints[] = {0, 1};
         assert(!equal(one_int, two_ints, comp, proj, proj));
+    }
+    {
+        // Validate memcmp case
+        int arr1[3]{0, 2, 5};
+        int arr2[3]{0, 2, 5};
+        assert(equal(arr1, arr2));
+        arr2[1] = 7;
+        assert(!equal(arr1, arr2));
     }
 }
 
@@ -95,4 +105,6 @@ struct instantiator {
     }
 };
 
-template void test_in_in<instantiator>();
+#ifndef _PREFAST_ // TRANSITION, GH-1030
+template void test_in_in<instantiator, const int, const int>();
+#endif // TRANSITION, GH-1030
