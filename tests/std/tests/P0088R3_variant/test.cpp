@@ -6444,10 +6444,8 @@ namespace msvc {
     namespace big_variant {
 #ifdef __EDG__
         constexpr std::size_t big = 20;
-#elif defined(__clang__)
-        constexpr std::size_t big = 256; // Clang supports more, but avoid the test timing out.
-#else // C1XX
-        constexpr std::size_t big = 120;
+#else // C1XX and Clang
+        constexpr std::size_t big = 64;
 #endif // tune value of "big" to a bit less than the largest variant the front-end can handle
         constexpr std::size_t n = 16;
 
@@ -6874,7 +6872,7 @@ namespace msvc {
                 ASSERT_SAME_TYPE(decltype(cb), const simple_base&);
                 assert(cb.x == 42);
                 auto&& rb = std::visit<simple_base&&>(std::identity{}, std::move(v));
-                ASSERT_SAME_TYPE(decltype(rb), simple_base&&);
+                ASSERT_SAME_TYPE(decltype(rb), simple_base &&);
                 assert(rb.x == 42);
                 auto&& crb = std::visit<const simple_base&&>(std::identity{}, std::move(std::as_const(v)));
                 ASSERT_SAME_TYPE(decltype(crb), const simple_base&&);
