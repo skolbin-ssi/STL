@@ -1,15 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <assert.h>
+#include <cassert>
+#include <cstdio>
 #include <locale>
-#include <stdio.h>
 
 #include <Windows.h>
 
 using namespace std;
 
 #define STATIC_ASSERT(...) static_assert(__VA_ARGS__, #__VA_ARGS__)
+
+STATIC_ASSERT(noexcept(locale{} == locale{}));
+STATIC_ASSERT(noexcept(locale{} != locale{}));
 
 void test_dll() {
     puts("Calling dll");

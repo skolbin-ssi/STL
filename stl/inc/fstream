@@ -26,7 +26,7 @@ _STL_DISABLE_CLANG_WARNINGS
 _STD_BEGIN
 #if _HAS_CXX17
 namespace filesystem {
-    class path;
+    _EXPORT_STD class path;
 }
 #endif // _HAS_CXX17
 
@@ -60,12 +60,12 @@ _INLINE_VAR constexpr bool _Is_any_path = _Is_any_of_v<_Ty
     >;
 // clang-format on
 
-_CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(const char*, ios_base::openmode, int);
-_CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(const wchar_t*, ios_base::openmode, int);
+extern "C++" _CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(const char*, ios_base::openmode, int);
+extern "C++" _CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(const wchar_t*, ios_base::openmode, int);
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
-_CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(const unsigned short*, ios_base::openmode, int);
-#endif // _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
+extern "C++" _CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(const unsigned short*, ios_base::openmode, int);
+#endif // _CRTBLD
 
 template <class _Elem>
 bool _Fgetc(_Elem& _Ch, FILE* _File) { // get an element from a C stream
@@ -94,7 +94,7 @@ inline bool _Fgetc(wchar_t& _Wchar, FILE* _File) { // get a wchar_t element from
     }
 }
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
 template <>
 inline bool _Fgetc(unsigned short& _Wchar, FILE* _File) { // get an unsigned short element from a C stream
     wint_t _Meta;
@@ -105,7 +105,7 @@ inline bool _Fgetc(unsigned short& _Wchar, FILE* _File) { // get an unsigned sho
         return true;
     }
 }
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
 template <class _Elem>
 bool _Fputc(_Elem _Ch, FILE* _File) { // put an element to a C stream
@@ -122,12 +122,12 @@ inline bool _Fputc(wchar_t _Wchar, FILE* _File) { // put a wchar_t element to a 
     return _CSTD fputwc(_Wchar, _File) != WEOF;
 }
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
 template <>
 inline bool _Fputc(unsigned short _Wchar, FILE* _File) { // put an unsigned short element to a C stream
     return _CSTD fputwc(_Wchar, _File) != WEOF;
 }
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
 template <class _Elem>
 bool _Ungetc(const _Elem&, FILE*) { // put back an arbitrary element to a C stream (always fail)
@@ -154,14 +154,14 @@ inline bool _Ungetc(const wchar_t& _Wchar, FILE* _File) { // put back a wchar_t 
     return _CSTD ungetwc(_Wchar, _File) != WEOF;
 }
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
 template <>
 inline bool _Ungetc(const unsigned short& _Wchar, FILE* _File) { // put back an unsigned short element to a C stream
     return _CSTD ungetwc(_Wchar, _File) != WEOF;
 }
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
-template <class _Elem, class _Traits>
+_EXPORT_STD template <class _Elem, class _Traits>
 class basic_filebuf : public basic_streambuf<_Elem, _Traits> { // stream buffer associated with a C stream
 public:
     using _Mysb = basic_streambuf<_Elem, _Traits>;
@@ -189,7 +189,7 @@ public:
     using pos_type = typename _Traits::pos_type;
     using off_type = typename _Traits::off_type;
 
-    basic_filebuf(_Uninitialized) : _Mysb(_Noinit) {}
+    basic_filebuf(_Uninitialized) noexcept : _Mysb(_Noinit) {}
 
     basic_filebuf(basic_filebuf&& _Right) {
         _Init(_Right._Myfile, _Newfl); // match buffering styles
@@ -209,7 +209,7 @@ public:
         }
     }
 
-    void swap(basic_filebuf& _Right) {
+    void swap(basic_filebuf& _Right) noexcept /* strengthened */ {
         if (this != _STD addressof(_Right)) {
             FILE* _Myfile_sav                       = _Myfile;
             const _Cvt* _Pcvt_sav                   = _Pcvt;
@@ -267,7 +267,7 @@ public:
         }
     }
 
-    basic_filebuf(const basic_filebuf&) = delete;
+    basic_filebuf(const basic_filebuf&)            = delete;
     basic_filebuf& operator=(const basic_filebuf&) = delete;
 
     enum _Initfl { // reasons for a call to _Init
@@ -276,7 +276,7 @@ public:
         _Closefl
     };
 
-    _NODISCARD bool is_open() const {
+    _NODISCARD bool is_open() const noexcept /* strengthened */ {
         return static_cast<bool>(_Myfile);
     }
 
@@ -353,7 +353,7 @@ public:
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     basic_filebuf* open(
         const unsigned short* _Filename, ios_base::openmode _Mode, int _Prot = ios_base::_Default_open_prot) {
         // in standard as const std::filesystem::path::value_type *; _Prot is an extension
@@ -377,7 +377,7 @@ public:
         return open(_Filename, static_cast<ios_base::openmode>(_Mode));
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     basic_filebuf* close() {
         basic_filebuf* _Ans;
@@ -647,11 +647,11 @@ protected:
         if (!_Myfile || !_Endwrite()
             || ((_Off != 0 || _Way != ios_base::cur) && _CSTD _fseeki64(_Myfile, _Off, _Way) != 0)
             || _CSTD fgetpos(_Myfile, &_Fileposition) != 0) {
-            return pos_type(-1); // report failure
+            return pos_type{off_type{-1}}; // report failure
         }
 
         _Reset_back(); // revert from _Mychar buffer, discarding any putback
-        return pos_type(_State, _Fileposition); // return new position
+        return pos_type{_State, _Fileposition}; // return new position
     }
 
     pos_type __CLR_OR_THIS_CALL seekpos(pos_type _Pos, ios_base::openmode = ios_base::in | ios_base::out) override {
@@ -659,12 +659,12 @@ protected:
         off_type _Off = static_cast<off_type>(_Pos);
 
         if (!_Myfile || !_Endwrite() || _CSTD fsetpos(_Myfile, &_Off) != 0) {
-            return pos_type(-1); // report failure
+            return pos_type{off_type{-1}}; // report failure
         }
 
         _State = _Pos.state();
         _Reset_back(); // revert from _Mychar buffer, discarding any putback
-        return pos_type(_State, _Off); // return new position
+        return pos_type{_State, _Off}; // return new position
     }
 
     _Mysb* __CLR_OR_THIS_CALL setbuf(_Elem* _Buffer, streamsize _Count) override { // offer _Buffer to C stream
@@ -699,7 +699,7 @@ protected:
         _Initcvt(_STD use_facet<_Cvt>(_Loc));
     }
 
-    void _Init(FILE* _File, _Initfl _Which) { // initialize to C stream _File after {new, open, close}
+    void _Init(FILE* _File, _Initfl _Which) noexcept { // initialize to C stream _File after {new, open, close}
         using _State_type = typename _Traits::state_type;
 
         __PURE_APPDOMAIN_GLOBAL static _State_type _Stinit; // initial state
@@ -742,8 +742,9 @@ protected:
         switch (_Pcvt->unshift(_State, _Str, _Str + _Codecvt_temp_buf, _Dest)) { // test result of homing conversion
         case codecvt_base::ok:
             _Wrotesome = false; // homed successfully
+            _FALLTHROUGH;
 
-        case codecvt_base::partial: // fall through
+        case codecvt_base::partial:
             { // put any generated bytes
                 const auto _Count = static_cast<size_t>(_Dest - _Str);
                 if (0 < _Count && _Count != static_cast<size_t>(_CSTD fwrite(_Str, 1, _Count, _Myfile))) {
@@ -762,7 +763,7 @@ protected:
         }
     }
 
-    void _Initcvt(const _Cvt& _Newcvt) { // initialize codecvt pointer
+    void _Initcvt(const _Cvt& _Newcvt) noexcept { // initialize codecvt pointer
         if (_Newcvt.always_noconv()) {
             _Pcvt = nullptr; // nothing to do
         } else { // set up for nontrivial codecvt facet
@@ -779,13 +780,13 @@ private:
     bool _Closef; // true if C stream must be closed
     FILE* _Myfile; // pointer to C stream
 
-    void _Reset_back() { // restore buffer after putback
+    void _Reset_back() noexcept { // restore buffer after putback
         if (_Mysb::eback() == &_Mychar) {
             _Mysb::setg(_Set_eback, _Set_eback, _Set_egptr);
         }
     }
 
-    void _Set_back() { // set up putback area
+    void _Set_back() noexcept { // set up putback area
         if (_Mysb::eback() != &_Mychar) { // save current get buffer
             _Set_eback = _Mysb::eback();
             _Set_egptr = _Mysb::egptr();
@@ -797,12 +798,12 @@ private:
     _Elem* _Set_egptr; // saves egptr()
 };
 
-template <class _Elem, class _Traits>
-void swap(basic_filebuf<_Elem, _Traits>& _Left, basic_filebuf<_Elem, _Traits>& _Right) {
+_EXPORT_STD template <class _Elem, class _Traits>
+void swap(basic_filebuf<_Elem, _Traits>& _Left, basic_filebuf<_Elem, _Traits>& _Right) noexcept /* strengthened */ {
     _Left.swap(_Right);
 }
 
-template <class _Elem, class _Traits>
+_EXPORT_STD template <class _Elem, class _Traits>
 class basic_ifstream : public basic_istream<_Elem, _Traits> { // input stream associated with a C stream
 public:
     using _Mybase = basic_istream<_Elem, _Traits>;
@@ -842,7 +843,7 @@ public:
         const _Ty& _Path, ios_base::openmode _Mode = ios_base::in, int _Prot = ios_base::_Default_open_prot)
         : basic_ifstream(_Path.c_str(), _Mode, _Prot) {} // _Prot is an extension
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     explicit basic_ifstream(const unsigned short* _Filename, ios_base::openmode _Mode = ios_base::in,
         int _Prot = ios_base::_Default_open_prot)
         : _Mybase(_STD addressof(_Filebuffer)) {
@@ -851,7 +852,7 @@ public:
             _Myios::setstate(ios_base::failbit);
         }
     }
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     explicit basic_ifstream(FILE* _File) : _Mybase(_STD addressof(_Filebuffer)), _Filebuffer(_File) {} // extension
 
@@ -871,14 +872,14 @@ public:
         }
     }
 
-    void swap(basic_ifstream& _Right) {
+    void swap(basic_ifstream& _Right) noexcept /* strengthened */ {
         if (this != _STD addressof(_Right)) {
             _Mybase::swap(_Right);
             _Filebuffer.swap(_Right._Filebuffer);
         }
     }
 
-    basic_ifstream(const basic_ifstream&) = delete;
+    basic_ifstream(const basic_ifstream&)            = delete;
     basic_ifstream& operator=(const basic_ifstream&) = delete;
 
     void open(
@@ -921,7 +922,7 @@ public:
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     void open(const unsigned short* _Filename, ios_base::openmode _Mode = ios_base::in,
         int _Prot = ios_base::_Default_open_prot) {
         // in standard as const std::filesystem::path::value_type *; _Prot is an extension
@@ -938,15 +939,15 @@ public:
         open(_Filename, static_cast<ios_base::openmode>(_Mode));
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     __CLR_OR_THIS_CALL ~basic_ifstream() noexcept override {}
 
-    _NODISCARD _Myfb* rdbuf() const {
+    _NODISCARD _Myfb* rdbuf() const noexcept /* strengthened */ {
         return const_cast<_Myfb*>(_STD addressof(_Filebuffer));
     }
 
-    _NODISCARD bool is_open() const {
+    _NODISCARD bool is_open() const noexcept /* strengthened */ {
         return _Filebuffer.is_open();
     }
 
@@ -981,12 +982,12 @@ private:
     _Myfb _Filebuffer;
 };
 
-template <class _Elem, class _Traits>
-void swap(basic_ifstream<_Elem, _Traits>& _Left, basic_ifstream<_Elem, _Traits>& _Right) {
+_EXPORT_STD template <class _Elem, class _Traits>
+void swap(basic_ifstream<_Elem, _Traits>& _Left, basic_ifstream<_Elem, _Traits>& _Right) noexcept /* strengthened */ {
     _Left.swap(_Right);
 }
 
-template <class _Elem, class _Traits>
+_EXPORT_STD template <class _Elem, class _Traits>
 class basic_ofstream : public basic_ostream<_Elem, _Traits> { // output stream associated with a C stream
 public:
     using _Mybase = basic_ostream<_Elem, _Traits>;
@@ -1025,7 +1026,7 @@ public:
         const _Ty& _Path, ios_base::openmode _Mode = ios_base::out, int _Prot = ios_base::_Default_open_prot)
         : basic_ofstream(_Path.c_str(), _Mode, _Prot) {} // _Prot is an extension
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     explicit basic_ofstream(const unsigned short* _Filename, ios_base::openmode _Mode = ios_base::out,
         int _Prot = ios_base::_Default_open_prot)
         : _Mybase(_STD addressof(_Filebuffer)) {
@@ -1034,7 +1035,7 @@ public:
             _Myios::setstate(ios_base::failbit);
         }
     }
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     explicit basic_ofstream(FILE* _File) : _Mybase(_STD addressof(_Filebuffer)), _Filebuffer(_File) {} // extension
 
@@ -1054,14 +1055,14 @@ public:
         }
     }
 
-    void swap(basic_ofstream& _Right) {
+    void swap(basic_ofstream& _Right) noexcept /* strengthened */ {
         if (this != _STD addressof(_Right)) {
             _Mybase::swap(_Right);
             _Filebuffer.swap(_Right._Filebuffer);
         }
     }
 
-    basic_ofstream(const basic_ofstream&) = delete;
+    basic_ofstream(const basic_ofstream&)            = delete;
     basic_ofstream& operator=(const basic_ofstream&) = delete;
 
     void open(
@@ -1104,7 +1105,7 @@ public:
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     void open(const unsigned short* _Filename, ios_base::openmode _Mode = ios_base::out,
         int _Prot = ios_base::_Default_open_prot) {
         // in standard as const std::filesystem::path::value_type *; _Prot is an extension
@@ -1121,15 +1122,15 @@ public:
         open(_Filename, static_cast<ios_base::openmode>(_Mode));
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     __CLR_OR_THIS_CALL ~basic_ofstream() noexcept override {}
 
-    _NODISCARD _Myfb* rdbuf() const {
+    _NODISCARD _Myfb* rdbuf() const noexcept /* strengthened */ {
         return const_cast<_Myfb*>(_STD addressof(_Filebuffer));
     }
 
-    _NODISCARD bool is_open() const {
+    _NODISCARD bool is_open() const noexcept /* strengthened */ {
         return _Filebuffer.is_open();
     }
 
@@ -1164,12 +1165,12 @@ private:
     _Myfb _Filebuffer;
 };
 
-template <class _Elem, class _Traits>
-void swap(basic_ofstream<_Elem, _Traits>& _Left, basic_ofstream<_Elem, _Traits>& _Right) {
+_EXPORT_STD template <class _Elem, class _Traits>
+void swap(basic_ofstream<_Elem, _Traits>& _Left, basic_ofstream<_Elem, _Traits>& _Right) noexcept /* strengthened */ {
     _Left.swap(_Right);
 }
 
-template <class _Elem, class _Traits>
+_EXPORT_STD template <class _Elem, class _Traits>
 class basic_fstream : public basic_iostream<_Elem, _Traits> { // input/output stream associated with a C stream
 public:
     using _Mybase     = basic_iostream<_Elem, _Traits>;
@@ -1213,7 +1214,7 @@ public:
         int _Prot = ios_base::_Default_open_prot)
         : basic_fstream(_Path.c_str(), _Mode, _Prot) {} // _Prot is an extension
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     explicit basic_fstream(const unsigned short* _Filename, ios_base::openmode _Mode = ios_base::in | ios_base::out,
         int _Prot = ios_base::_Default_open_prot)
         : _Mybase(_STD addressof(_Filebuffer)) {
@@ -1222,7 +1223,7 @@ public:
             _Myios::setstate(ios_base::failbit);
         }
     }
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     explicit basic_fstream(FILE* _File) : _Mybase(_STD addressof(_Filebuffer)), _Filebuffer(_File) {} // extension
 
@@ -1242,14 +1243,14 @@ public:
         }
     }
 
-    void swap(basic_fstream& _Right) {
+    void swap(basic_fstream& _Right) noexcept /* strengthened */ {
         if (this != _STD addressof(_Right)) {
             _Mybase::swap(_Right);
             _Filebuffer.swap(_Right._Filebuffer);
         }
     }
 
-    basic_fstream(const basic_fstream&) = delete;
+    basic_fstream(const basic_fstream&)            = delete;
     basic_fstream& operator=(const basic_fstream&) = delete;
 
     void open(const wchar_t* _Filename, ios_base::openmode _Mode = ios_base::in | ios_base::out,
@@ -1293,7 +1294,7 @@ public:
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
 
-#ifdef _NATIVE_WCHAR_T_DEFINED
+#ifdef _CRTBLD
     void open(const unsigned short* _Filename, ios_base::openmode _Mode = ios_base::in | ios_base::out,
         int _Prot = ios_base::_Default_open_prot) {
         // in standard as const std::filesystem::path::value_type *; _Prot is an extension
@@ -1310,15 +1311,15 @@ public:
         open(_Filename, static_cast<ios_base::openmode>(_Mode));
     }
 #endif // _HAS_OLD_IOSTREAMS_MEMBERS
-#endif // _NATIVE_WCHAR_T_DEFINED
+#endif // _CRTBLD
 
     __CLR_OR_THIS_CALL ~basic_fstream() noexcept override {}
 
-    _NODISCARD _Myfb* rdbuf() const {
+    _NODISCARD _Myfb* rdbuf() const noexcept /* strengthened */ {
         return const_cast<_Myfb*>(_STD addressof(_Filebuffer));
     }
 
-    _NODISCARD bool is_open() const {
+    _NODISCARD bool is_open() const noexcept /* strengthened */ {
         return _Filebuffer.is_open();
     }
 
@@ -1354,8 +1355,8 @@ private:
     _Myfb _Filebuffer;
 };
 
-template <class _Elem, class _Traits>
-void swap(basic_fstream<_Elem, _Traits>& _Left, basic_fstream<_Elem, _Traits>& _Right) {
+_EXPORT_STD template <class _Elem, class _Traits>
+void swap(basic_fstream<_Elem, _Traits>& _Left, basic_fstream<_Elem, _Traits>& _Right) noexcept /* strengthened */ {
     _Left.swap(_Right);
 }
 _STD_END

@@ -7,7 +7,9 @@
 #define _SILENCE_CXX17_OLD_ALLOCATOR_MEMBERS_DEPRECATION_WARNING
 
 #include <algorithm>
-#include <assert.h>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <forward_list>
 #include <functional>
@@ -19,8 +21,6 @@
 #include <random>
 #include <regex>
 #include <set>
-#include <stdlib.h>
-#include <string.h>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -28,9 +28,9 @@
 #include <utility>
 #include <vector>
 
-#ifndef _M_CEE
+#ifndef _M_CEE_PURE
 #include <future>
-#endif // _M_CEE
+#endif // _M_CEE_PURE
 
 using namespace std;
 
@@ -231,7 +231,7 @@ int main() {
         shared_ptr<int> sp2 = allocate_shared<int>(alloc, 1729);
     }
 
-#ifndef _M_CEE
+#ifndef _M_CEE_PURE
     {
         promise<int> p(allocator_arg, alloc);
         future<int> f = p.get_future();
@@ -277,7 +277,7 @@ int main() {
         f.get();
     }
 #endif // _HAS_FUNCTION_ALLOCATOR_SUPPORT
-#endif // _M_CEE
+#endif // _M_CEE_PURE
 
     test_1119194();
     test_1184701();

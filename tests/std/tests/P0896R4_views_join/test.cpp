@@ -20,9 +20,7 @@
 using namespace std;
 
 template <class Rng>
-concept CanViewJoin = requires(Rng&& r) {
-    views::join(forward<Rng>(r));
-};
+concept CanViewJoin = requires(Rng&& r) { views::join(forward<Rng>(r)); };
 
 template <ranges::input_range Outer, ranges::random_access_range Expected>
 constexpr bool test_one(Outer&& rng, Expected&& expected) {
@@ -466,11 +464,11 @@ constexpr auto ToString(const size_t val) {
 }
 
 struct Immovable {
-    Immovable()                 = default;
-    Immovable(const Immovable&) = delete;
-    Immovable(Immovable&&)      = delete;
+    Immovable()                            = default;
+    Immovable(const Immovable&)            = delete;
+    Immovable(Immovable&&)                 = delete;
     Immovable& operator=(const Immovable&) = delete;
-    Immovable& operator=(Immovable&&) = delete;
+    Immovable& operator=(Immovable&&)      = delete;
 };
 
 // Validate that the _Defaultabox primary template works when fed with a non-trivially-destructible type
@@ -478,6 +476,13 @@ void test_non_trivially_destructible_type() { // COMPILE-ONLY
     struct non_trivially_destructible_input_iterator {
         using difference_type = int;
         using value_type      = int;
+
+        // Provide some way to construct this type.
+        non_trivially_destructible_input_iterator(double, double) {}
+
+        non_trivially_destructible_input_iterator(const non_trivially_destructible_input_iterator&) = default;
+        non_trivially_destructible_input_iterator& operator=(
+            const non_trivially_destructible_input_iterator&) = default;
 
         ~non_trivially_destructible_input_iterator() {}
 
@@ -503,6 +508,26 @@ void test_non_trivially_destructible_type() { // COMPILE-ONLY
 
     // Also validate _Non_propagating_cache
     auto r2 = views::empty<Inner> | views::transform([](Inner& r) { return r; }) | views::join;
+}
+
+// GH-3014 "<ranges>: list-initialization is misused"
+void test_gh_3014() { // COMPILE-ONLY
+    struct InRange {
+        string* begin() {
+            return nullptr;
+        }
+
+        test::init_list_not_constructible_iterator<string> begin() const {
+            return nullptr;
+        }
+
+        unreachable_sentinel_t end() const {
+            return {};
+        }
+    };
+
+    auto r                                           = InRange{} | views::join;
+    [[maybe_unused]] decltype(as_const(r).begin()) i = r.begin(); // Check 'iterator(iterator<!Const> i)'
 }
 
 int main() {
@@ -560,33 +585,25 @@ int main() {
     { // P2328 range of prvalue vector using global function
         static constexpr int result[] = {1, 2, 3, 4, 5};
         assert(ranges::equal(views::iota(0, 5) | views::transform(ToVector) | views::join, result));
-#if defined(__clang__) || defined(__EDG__) // TRANSITION, VSO-934264
         static_assert(ranges::equal(views::iota(0, 5) | views::transform(ToVector) | views::join, result));
-#endif // not MSVC
     }
 
     { // P2328 range of prvalue vector using lambda
         static constexpr int result[] = {1, 2, 3, 4, 5};
-        auto ToVectorLambda           = [](const int i) { return vector{i + 1}; };
+        constexpr auto ToVectorLambda = [](const int i) { return vector{i + 1}; };
         assert(ranges::equal(views::iota(0, 5) | views::transform(ToVectorLambda) | views::join, result));
-#if defined(__clang__) || defined(__EDG__) // TRANSITION, VSO-934264
         static_assert(ranges::equal(views::iota(0, 5) | views::transform(ToVectorLambda) | views::join, result));
-#endif // not MSVC
     }
 
     { // P2328 range of prvalue string using global function
         assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToString) | views::join, expected));
-#if defined(__clang__) || defined(__EDG__) // TRANSITION, VSO-934264
         static_assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToString) | views::join, expected));
-#endif // not MSVC
     }
 
     { // P2328 range of prvalue string using lambda
-        auto ToStringLambda = [](const size_t i) { return string{prvalue_input[i]}; };
+        constexpr auto ToStringLambda = [](const size_t i) { return string{prvalue_input[i]}; };
         assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToStringLambda) | views::join, expected));
-#if defined(__clang__) || defined(__EDG__) // TRANSITION, VSO-934264
         static_assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToStringLambda) | views::join, expected));
-#endif // not MSVC
     }
 
     { // Immovable type

@@ -6,8 +6,14 @@
 variables:
   tmpDir: 'D:\Temp'
   buildOutputLocation: 'D:\build'
+  benchmarkBuildOutputLocation: 'D:\benchmark'
 
-pool: 'StlBuild-2022-06-01-T1839'
+pool:
+  name: 'StlBuild-2023-02-21T1058-Pool'
+  demands: EnableSpotVM -equals true
+
+pr:
+  drafts: false
 
 stages:
   - stage: Code_Format
@@ -26,6 +32,10 @@ stages:
           - checkout: self
             clean: true
             submodules: false
+          - script: |
+              cd $(Build.SourcesDirectory)
+              git clean --quiet -x -d -f -f
+            displayName: 'Clean after checkout'
           - script: |
               call "%ProgramFiles%\Microsoft Visual Studio\2022\Preview\Common7\Tools\VsDevCmd.bat" ^
                 -host_arch=amd64 -arch=amd64 -no_logo
@@ -82,6 +92,7 @@ stages:
         parameters:
           targetPlatform: arm
           vsDevCmdArch: arm
+          benchmarkBuildOutputLocationVar: ''
 
   - stage: Build_ARM64
     dependsOn: Build_And_Test_x64
