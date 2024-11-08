@@ -10,9 +10,9 @@
 #include <test_death.hpp>
 
 template <class, template <class...> class>
-inline constexpr bool is_specialization = false;
+constexpr bool is_specialization = false;
 template <class... Args, template <class...> class T>
-inline constexpr bool is_specialization<T<Args...>, T> = true;
+constexpr bool is_specialization<T<Args...>, T> = true;
 
 template <bool IsConst, class C>
 using maybe_const_iter = std::conditional_t<IsConst, typename C::const_iterator, typename C::iterator>;
@@ -56,7 +56,7 @@ void test_positive_cases() {
 // Negative tests:
 template <class C, bool IsConst>
 void test_invalidated_by_pop_back() {
-    using T = typename C::value_type;
+    using T = C::value_type;
     C c     = {T{}, {}, {}};
 
     maybe_const_iter<IsConst, C> const pos = c.end() - 1;
@@ -68,7 +68,7 @@ void test_invalidated_by_pop_back() {
 
 template <class C, bool IsConst>
 void test_invalidated_by_push_back() {
-    using T = typename C::value_type;
+    using T = C::value_type;
     C c;
     c.resize(1024, T{});
     c.resize(512);
@@ -82,7 +82,7 @@ void test_invalidated_by_push_back() {
 
 template <class C, bool IsConst>
 void test_invalidated_by_reallocation() {
-    using T = typename C::value_type;
+    using T = C::value_type;
     C c     = {T{}, {}, {}};
 
     maybe_const_iter<IsConst, C> const pos = c.begin();
@@ -94,7 +94,7 @@ void test_invalidated_by_reallocation() {
 
 template <class C, bool IsConst>
 void test_out_of_range() {
-    using T = typename C::value_type;
+    using T = C::value_type;
     C c     = {T{}, {}, {}};
 
     maybe_const_iter<IsConst, C> const last = c.end();
@@ -112,10 +112,9 @@ int main(int argc, char* argv[]) {
         test_positive_cases<std::vector<int>, false>();
     });
 
-    // clang-format off
 #if _ITERATOR_DEBUG_LEVEL != 0
     exec.add_death_tests({
-        // Tests for only vector: basic_string doesn't invalidate on element creation/destruction because POD.
+    // Tests for only vector: basic_string doesn't invalidate on element creation/destruction because POD.
 #if _ITERATOR_DEBUG_LEVEL == 2
         test_invalidated_by_pop_back<std::vector<int>, false>,
         test_invalidated_by_pop_back<std::vector<int>, true>,
@@ -134,7 +133,6 @@ int main(int argc, char* argv[]) {
         test_out_of_range<std::vector<int>, true>,
     });
 #endif // _ITERATOR_DEBUG_LEVEL != 0
-    // clang-format on
 
     return exec.run(argc, argv);
 }

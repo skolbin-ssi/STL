@@ -4,9 +4,13 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <isa_availability.h>
 #include <ranges>
 
+#pragma warning(push) // TRANSITION, OS-23694920
+#pragma warning(disable : 4668) // 'MEOW' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
 #include <Windows.h>
+#pragma warning(pop)
 
 using namespace std;
 
@@ -61,10 +65,6 @@ int main() {
     disable_instructions(__ISA_AVAILABLE_SSE42);
     test_all_element_sizes(p, page);
 #endif // defined(_M_IX86) || defined(_M_X64)
-#if defined(_M_IX86)
-    disable_instructions(__ISA_AVAILABLE_SSE2);
-    test_all_element_sizes(p, page);
-#endif // defined(_M_IX86)
 
     VirtualFree(p, 0, MEM_RELEASE);
 }

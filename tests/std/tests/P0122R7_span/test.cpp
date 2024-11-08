@@ -6,13 +6,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <ranges>
 #include <span>
 #include <type_traits>
 #include <utility>
-
-#ifdef __cpp_lib_concepts
-#include <ranges>
-#endif // __cpp_lib_concepts
 
 using namespace std;
 
@@ -74,10 +71,8 @@ static_assert(is_same_v<span<const int>::reverse_iterator, reverse_iterator<span
 static_assert(is_same_v<iterator_traits<span<const int, 3>::iterator>::pointer, const int*>);
 static_assert(is_same_v<span<const int, 3>::reverse_iterator, reverse_iterator<span<const int, 3>::iterator>>);
 
-#ifdef __cpp_lib_concepts
 static_assert(ranges::enable_borrowed_range<span<int>>);
 static_assert(ranges::enable_borrowed_range<span<int, 3>>);
-#endif // __cpp_lib_concepts
 
 // N4901 [span.overview]/3
 static_assert(is_trivially_copyable_v<span<int>>);
@@ -145,12 +140,10 @@ struct BasicRange {
     }
 };
 
-#ifdef __cpp_lib_concepts
 namespace std::ranges {
     template <typename T, bool Borrowed>
-    inline constexpr bool enable_borrowed_range<BasicRange<T, Borrowed>> = Borrowed;
+    constexpr bool enable_borrowed_range<BasicRange<T, Borrowed>> = Borrowed;
 }
-#endif // __cpp_lib_concepts
 
 using ContiguousSizedRange = BasicRange<int>;
 
@@ -161,10 +154,10 @@ template <typename T, size_t Extent = dynamic_extent>
 constexpr void FunctionTakingSpan(type_identity_t<span<T, Extent>>) {}
 
 template <typename U, typename = void>
-inline constexpr bool AsWritableBytesCompilesFor = false;
+constexpr bool AsWritableBytesCompilesFor = false;
 
 template <typename U>
-inline constexpr bool AsWritableBytesCompilesFor<U, void_t<decltype(as_writable_bytes(declval<U>()))>> = true;
+constexpr bool AsWritableBytesCompilesFor<U, void_t<decltype(as_writable_bytes(declval<U>()))>> = true;
 
 constexpr bool test() {
     {
@@ -247,7 +240,6 @@ constexpr bool test() {
         static_assert(is_same_v<decltype(span{as_const(arr), 3}), span<const int>>);
         static_assert(is_same_v<decltype(span{cbegin(arr), 3}), span<const int>>);
 
-#ifdef __cpp_lib_concepts
         static_assert(is_nothrow_constructible_v<span<int>, array<int, 3>::iterator, size_t>); // strengthened
         static_assert(!is_constructible_v<span<int>, array<int, 3>::const_iterator, size_t>);
         static_assert(!is_constructible_v<span<int>, array<double, 3>::iterator, size_t>);
@@ -292,7 +284,6 @@ constexpr bool test() {
 
         static_assert(is_same_v<decltype(span{stl.begin(), 3}), span<int>>);
         static_assert(is_same_v<decltype(span{stl.cbegin(), 3}), span<const int>>);
-#endif // __cpp_lib_concepts
     }
 
     {
@@ -351,7 +342,6 @@ constexpr bool test() {
         static_assert(is_same_v<decltype(span{begin(arr), end(arr)}), span<int>>);
         static_assert(is_same_v<decltype(span{cbegin(arr), cend(arr)}), span<const int>>);
 
-#ifdef __cpp_lib_concepts
         static_assert(is_nothrow_constructible_v<span<int>, int*, const int*>); // strengthened
 
         static_assert(is_nothrow_constructible_v<span<int, 3>, int*, const int*>); // strengthened
@@ -456,7 +446,6 @@ constexpr bool test() {
         static_assert(is_same_v<decltype(span{stl.begin(), stl.cend()}), span<int>>);
         static_assert(is_same_v<decltype(span{stl.cbegin(), stl.end()}), span<const int>>);
         static_assert(is_same_v<decltype(span{stl.cbegin(), stl.cend()}), span<const int>>);
-#endif // __cpp_lib_concepts
     }
 
     {
@@ -619,7 +608,6 @@ constexpr bool test() {
         FunctionTakingSpan<const int>(user_range);
         FunctionTakingSpan<const int>(as_const(user_range));
 
-#ifdef __cpp_lib_concepts
         static_assert(!is_constructible_v<span<int>, ContiguousSizedRange>);
         static_assert(!is_constructible_v<span<int, 3>, ContiguousSizedRange>);
         static_assert(is_constructible_v<span<int>, BorrowedContiguousSizedRange>);
@@ -654,7 +642,6 @@ constexpr bool test() {
 
         static_assert(is_same_v<decltype(span{user_range}), span<int>>);
         static_assert(is_same_v<decltype(span{as_const(user_range)}), span<const int>>);
-#endif // __cpp_lib_concepts
     }
 
     {
@@ -1062,6 +1049,27 @@ void test_non_constexpr() {
     assert(sp_5.size() == SizeBytes);
     assert(sp_6.size() == SizeBytes);
 }
+
+#if !_HAS_CXX23 // TRANSITION, ABI, const_iterator<_Span_iterator<holder<incomplete>*>> is ill-formed due to ADL in
+                // constraints checking
+#ifndef _M_CEE // TRANSITION, VSO-1659496
+// GH-1596: "<algorithm>: unqualified calls to _Adl_verify_range incorrectly cause instantiation"
+template <class T>
+struct holder {
+    T t;
+};
+
+struct incomplete;
+
+void test_adl_proof_span_constructors() { // COMPILE-ONLY
+    using validator = holder<incomplete>*;
+    validator varr[1]{};
+
+    [[maybe_unused]] span<validator> s1{varr, varr + 1};
+    [[maybe_unused]] span<validator> s2{varr, 1};
+}
+#endif // ^^^ no workaround ^^^
+#endif // !_HAS_CXX23
 
 int main() {
     static_assert(test());

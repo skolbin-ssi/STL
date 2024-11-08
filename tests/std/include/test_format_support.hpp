@@ -4,9 +4,13 @@
 #pragma once
 
 #include <cassert>
+#include <concepts>
 #include <cstddef>
 #include <format>
+#include <iterator>
+#include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 // copied from the string_view tests
@@ -18,12 +22,28 @@ struct choose_literal<char> {
     static constexpr const char* choose(const char* s, const wchar_t*) {
         return s;
     }
+
+    static constexpr char choose(char c, wchar_t) {
+        return c;
+    }
+
+    static constexpr std::string_view choose(std::string_view sv, std::wstring_view) {
+        return sv;
+    }
 };
 
 template <>
 struct choose_literal<wchar_t> {
     static constexpr const wchar_t* choose(const char*, const wchar_t* s) {
         return s;
+    }
+
+    static constexpr wchar_t choose(char, wchar_t c) {
+        return c;
+    }
+
+    static constexpr std::wstring_view choose(std::string_view, std::wstring_view sv) {
+        return sv;
     }
 };
 
@@ -50,7 +70,7 @@ template <typename CharT>
 struct testing_callbacks {
     std::_Fmt_align expected_alignment = std::_Fmt_align::_None;
     std::_Fmt_sign expected_sign       = std::_Fmt_sign::_None;
-    std::basic_string_view<CharT> expected_fill;
+    std::basic_string_view<CharT> expected_fill{};
     int expected_width                     = -1;
     std::size_t expected_dynamic_width     = static_cast<std::size_t>(-1);
     bool expected_auto_dynamic_width       = false;
@@ -126,3 +146,90 @@ void test_parse_helper(const CharT* (*func)(const CharT*, const CharT*, callback
         assert(err_expected);
     }
 }
+
+template <class CharT>
+struct FormatFn {
+    template <class... Args>
+    [[nodiscard]] auto operator()(
+        const std::basic_format_string<CharT, std::type_identity_t<Args>...> str, Args&&... args) const {
+        return std::format(str, std::forward<Args>(args)...);
+    }
+};
+
+template <class CharT>
+struct VFormatFn {
+    template <class... Args>
+    [[nodiscard]] auto operator()(const std::basic_string_view<CharT> str, Args&&... args) const {
+        if constexpr (std::same_as<CharT, char>) {
+            return std::vformat(str, std::make_format_args(args...));
+        } else {
+            return std::vformat(str, std::make_wformat_args(args...));
+        }
+    }
+};
+
+template <class CharT>
+struct ExpectFormatError {
+private:
+    VFormatFn<CharT> base;
+
+public:
+    template <class... Args>
+    void operator()(const std::basic_string_view<CharT> str, Args&&... args) const {
+        try {
+            (void) base(str, std::forward<Args>(args)...);
+            assert(false && "No exception.");
+        } catch (const std::format_error&) {
+            return;
+        } catch (...) {
+            assert(false && "Incorrect exception.");
+        }
+    }
+};
+
+template <class CharT>
+struct MoveOnlyFormat {
+private:
+    struct StringInserter {
+        using iterator_category = std::output_iterator_tag;
+        using difference_type   = std::ptrdiff_t;
+        using container_type    = std::basic_string<CharT>;
+
+        StringInserter()                            = default;
+        StringInserter(StringInserter&&)            = default;
+        StringInserter& operator=(StringInserter&&) = default;
+
+        StringInserter(const StringInserter&)            = delete;
+        StringInserter& operator=(const StringInserter&) = delete;
+
+        StringInserter& operator=(const CharT val) {
+            str.push_back(val);
+            return *this;
+        }
+
+        StringInserter& operator*() {
+            return *this;
+        }
+
+        StringInserter& operator++() {
+            return *this;
+        }
+
+        StringInserter operator++(int) {
+            return *this;
+        }
+
+        std::basic_string<CharT> str;
+    };
+
+public:
+    static_assert(std::output_iterator<StringInserter, CharT>);
+    static_assert(!std::copyable<StringInserter>);
+    static_assert(std::movable<StringInserter>);
+
+    template <class... Args>
+    [[nodiscard]] auto operator()(
+        const std::basic_format_string<CharT, std::type_identity_t<Args>...> str, Args&&... args) const {
+        return std::format_to(StringInserter{}, str, std::forward<Args>(args)...).str;
+    }
+};

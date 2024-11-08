@@ -3,7 +3,6 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _XLOCTIME_
 #define _XLOCTIME_
 #include <yvals_core.h>
@@ -25,7 +24,7 @@ ios_base::iostate _Getint_v2(_InIt& _First, _InIt& _Last, int _Lo, int _Hi, int&
     const ctype<_Elem>& _Ctype_fac) { // get integer in range [_Lo, _Hi] from [_First, _Last)
     _STL_INTERNAL_CHECK(0 <= _Hi && _Hi <= 9999);
     const int _Hi_digits = (_Hi <= 9 ? 1 : _Hi <= 99 ? 2 : _Hi <= 999 ? 3 : 4);
-    char _Ac[_MAX_INT_DIG];
+    char _Ac[_Max_int_dig];
     char* _Ep;
     char* _Ptr = _Ac;
     char _Ch;
@@ -55,7 +54,7 @@ ios_base::iostate _Getint_v2(_InIt& _First, _InIt& _Last, int _Lo, int _Hi, int&
         *_Ptr++ = '0'; // replace one or more with single zero
     }
 
-    for (char* const _Pe = &_Ac[_MAX_INT_DIG - 1];
+    for (char* const _Pe = &_Ac[_Max_int_dig - 1];
          _First != _Last && '0' <= (_Ch = _Ctype_fac.narrow(*_First)) && _Ch <= '9' && _Digits_read < _Hi_digits;
          ++_Digits_read, (void) ++_First) { // copy digits
         *_Ptr = _Ch;
@@ -86,7 +85,9 @@ ios_base::iostate _Getint_v2(_InIt& _First, _InIt& _Last, int _Lo, int _Hi, int&
     return _State;
 }
 
-_EXPORT_STD extern "C++" struct _CRTIMP2_PURE_IMPORT time_base : locale::facet { // base class for time_get
+_EXPORT_STD extern "C++" struct _CRTIMP2_PURE_IMPORT time_base // base class for time_get
+    : locale::facet // TRANSITION, ABI, shouldn't be derived from locale::facet
+{
     enum dateorder { // constants for different orders of date components
         no_order,
         dmy,
@@ -95,7 +96,8 @@ _EXPORT_STD extern "C++" struct _CRTIMP2_PURE_IMPORT time_base : locale::facet {
         ydm
     };
 
-    __CLR_OR_THIS_CALL time_base(size_t _Refs = 0) : locale::facet(_Refs) {}
+    __CLR_OR_THIS_CALL time_base(size_t _Refs = 0) noexcept // strengthened
+        : locale::facet(_Refs) {}
 
     __CLR_OR_THIS_CALL ~time_base() noexcept override {}
 };
@@ -157,11 +159,11 @@ public:
 
         for (; _Fmtfirst != _Fmtlast; ++_Fmtfirst) {
             if (_State != ios_base::goodbit) {
-                // N4878 [locale.time.get.members]/8.2
+                // N4950 [locale.time.get.members]/8.2
                 // _State is fail, eof, or bad. Do not proceed to the next fields. Return with current _State.
                 break;
             } else if (_First == _Last) {
-                // N4878 [locale.time.get.members]/8.3
+                // N4950 [locale.time.get.members]/8.3
                 _State = ios_base::eofbit | ios_base::failbit;
                 break;
             } else if (_Ctype_fac.narrow(*_Fmtfirst) != '%') { // match literal element
@@ -176,7 +178,7 @@ public:
                     ++_First;
                 }
             } else if (++_Fmtfirst == _Fmtlast) {
-                // N4878 [locale.time.get.members]/8.4: "If the number of elements in the range [fmt, fmtend) is not
+                // N4950 [locale.time.get.members]/8.4: "If the number of elements in the range [fmt, fmtend) is not
                 // sufficient to unambiguously determine whether the conversion specification is complete and valid,
                 // the function evaluates err = ios_base::failbit."
                 _State = ios_base::failbit;
@@ -236,7 +238,7 @@ protected:
     void __CLR_OR_THIS_CALL _Getvals(_Elem2, const _Locinfo& _Lobj) { // get values
         _Cvt = _Lobj._Getcvt();
 
-        if (is_same_v<_Elem2, wchar_t>) {
+        if constexpr (is_same_v<_Elem2, wchar_t>) {
             _Days = reinterpret_cast<const _Elem*>(_Maklocwcs(reinterpret_cast<const wchar_t*>(_Lobj._W_Getdays())));
             _Months =
                 reinterpret_cast<const _Elem*>(_Maklocwcs(reinterpret_cast<const wchar_t*>(_Lobj._W_Getmonths())));
@@ -561,6 +563,7 @@ protected:
 
         default:
             _State |= ios_base::failbit; // unknown specifier
+            break;
         }
 
         if (_First == _Last) {
@@ -624,14 +627,14 @@ private:
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdllimport-static-field-def"
-#endif // __clang__
+#endif // defined(__clang__)
 
 template <class _Elem, class _InIt>
 __PURE_APPDOMAIN_GLOBAL locale::id time_get<_Elem, _InIt>::id;
 
 #ifdef __clang__
 #pragma clang diagnostic pop
-#endif // __clang__
+#endif // defined(__clang__)
 
 _EXPORT_STD template <class _Elem, class _InIt = istreambuf_iterator<_Elem, char_traits<_Elem>>>
 class time_get_byname : public time_get<_Elem, _InIt> { // time_get for named locale
@@ -647,6 +650,130 @@ public:
 protected:
     __CLR_OR_THIS_CALL ~time_get_byname() noexcept override {}
 };
+
+// C23 7.29.3.5 "The strftime function"/3
+_INLINE_VAR constexpr char _Valid_strftime_specifiers[] = {'a', 'A', 'b', 'B', 'c', 'C', 'd', 'D', 'e', 'F', 'g', 'G',
+    'h', 'H', 'I', 'j', 'm', 'M', 'n', 'p', 'r', 'R', 'S', 't', 'T', 'u', 'U', 'V', 'w', 'W', 'x', 'X', 'y', 'Y', 'z',
+    'Z'};
+
+_NODISCARD constexpr bool _Is_valid_strftime_specifier(const char _Specifier) {
+    for (const auto& _Valid_specifier : _Valid_strftime_specifiers) {
+        if (_Specifier == _Valid_specifier) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_sec(const tm* const _Pt) noexcept {
+    // seconds after the minute - [0, 60] including leap second
+    return _Pt->tm_sec >= 0 && _Pt->tm_sec <= 60;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_min(const tm* const _Pt) noexcept {
+    // minutes after the hour - [0, 59]
+    return _Pt->tm_min >= 0 && _Pt->tm_min <= 59;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_hour(const tm* const _Pt) noexcept {
+    // hours since midnight - [0, 23]
+    return _Pt->tm_hour >= 0 && _Pt->tm_hour <= 23;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_mday(const tm* const _Pt) noexcept {
+    // day of the month - [1, 31]
+    return _Pt->tm_mday >= 1 && _Pt->tm_mday <= 31;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_mon(const tm* const _Pt) noexcept {
+    // months since January - [0, 11]
+    return _Pt->tm_mon >= 0 && _Pt->tm_mon <= 11;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_year(const tm* const _Pt) noexcept {
+    // years since 1900 - UCRT max range is up until 8099
+    return _Pt->tm_year >= -1900 && _Pt->tm_year <= 8099;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_wday(const tm* const _Pt) noexcept {
+    // days since Sunday - [0, 6]
+    return _Pt->tm_wday >= 0 && _Pt->tm_wday <= 6;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_yday(const tm* const _Pt) noexcept {
+    // days since January 1 - [0, 365]
+    return _Pt->tm_yday >= 0 && _Pt->tm_yday <= 365;
+}
+
+_NODISCARD constexpr bool _Is_valid_strftime_tm_data(const char _Specifier, const tm* const _Pt) noexcept {
+    if (!_Pt) {
+        return false;
+    }
+
+    switch (_Specifier) {
+    case 'S':
+        return _Is_valid_strftime_tm_sec(_Pt);
+    case 'M':
+        return _Is_valid_strftime_tm_min(_Pt);
+    case 'H':
+    case 'I':
+    case 'p':
+        return _Is_valid_strftime_tm_hour(_Pt);
+    case 'd':
+    case 'e':
+        return _Is_valid_strftime_tm_mday(_Pt);
+    case 'b':
+    case 'B':
+    case 'm':
+    case 'h':
+        return _Is_valid_strftime_tm_mon(_Pt);
+    case 'C':
+    case 'y':
+    case 'Y':
+        return _Is_valid_strftime_tm_year(_Pt);
+    case 'j':
+        return _Is_valid_strftime_tm_yday(_Pt);
+    case 'a':
+    case 'A':
+    case 'u':
+    case 'w':
+        return _Is_valid_strftime_tm_wday(_Pt);
+    case 'U': // C23 7.29.3.5 "The strftime function"/3 says that %U and %W depend on tm_year,
+    case 'W': // but the UCRT neither uses nor validates it.
+        return _Is_valid_strftime_tm_wday(_Pt) && _Is_valid_strftime_tm_yday(_Pt);
+    case 'R':
+        return _Is_valid_strftime_tm_hour(_Pt) && _Is_valid_strftime_tm_min(_Pt);
+    case 'D':
+    case 'x':
+    case 'F':
+        return _Is_valid_strftime_tm_year(_Pt) && _Is_valid_strftime_tm_mon(_Pt) && _Is_valid_strftime_tm_mday(_Pt);
+    case 'g':
+    case 'G':
+        return _Is_valid_strftime_tm_year(_Pt) && _Is_valid_strftime_tm_wday(_Pt) && _Is_valid_strftime_tm_yday(_Pt);
+    case 'r':
+    case 'X':
+    case 'T':
+        return _Is_valid_strftime_tm_hour(_Pt) && _Is_valid_strftime_tm_min(_Pt) && _Is_valid_strftime_tm_sec(_Pt);
+    case 'c':
+        return _Is_valid_strftime_tm_wday(_Pt) && _Is_valid_strftime_tm_mon(_Pt) && _Is_valid_strftime_tm_mday(_Pt)
+            && _Is_valid_strftime_tm_hour(_Pt) && _Is_valid_strftime_tm_min(_Pt) && _Is_valid_strftime_tm_sec(_Pt)
+            && _Is_valid_strftime_tm_year(_Pt);
+    case 'V': // C23 7.29.3.5 "The strftime function"/3 says that %V depends on tm_year, tm_wday, and tm_yday.
+              // The UCRT uses them without validating them.
+        return true;
+    case 'z': // C23 7.29.3.5 "The strftime function"/3 says that %z and %Z depend on tm_isdst.
+    case 'Z': // The UCRT treats it as a boolean value, so there's no need for validation.
+        return true;
+    case 'n': // newline
+    case 't': // tab
+        return true;
+    default:
+        // We should have handled %% and called _Is_valid_strftime_specifier() before calling this function.
+        _STL_INTERNAL_CHECK(false);
+        return false;
+    }
+}
 
 _EXPORT_STD extern "C++" template <class _Elem, class _OutIt = ostreambuf_iterator<_Elem, char_traits<_Elem>>>
 class time_put : public locale::facet { // facet for converting encoded times to text
@@ -684,7 +811,23 @@ public:
                     _Specifier = _Ctype_fac.narrow(*_Fmtfirst);
                 }
 
-                _Dest = do_put(_Dest, _Iosbase, _Fill, _Pt, _Specifier, _Modifier); // convert a single field
+                if (_Specifier == '%' && _Modifier == '\0') {
+                    // if the specifier is percent and no modifier is set, just append it
+                    *_Dest++ = _Percent;
+                } else if (!_Is_valid_strftime_specifier(_Specifier)) {
+                    // no valid specifier, directly copy as literal elements
+                    *_Dest++ = _Percent;
+                    if (_Modifier != '\0') {
+                        *_Dest++ = _Modifier;
+                    }
+                    *_Dest++ = _Specifier;
+                } else {
+                    if (_Is_valid_strftime_tm_data(_Specifier, _Pt)) {
+                        _Dest = do_put(_Dest, _Iosbase, _Fill, _Pt, _Specifier, _Modifier); // convert a single field
+                    } else {
+                        *_Dest++ = _Elem('?');
+                    }
+                }
             }
         }
 
@@ -763,14 +906,14 @@ private:
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdllimport-static-field-def"
-#endif // __clang__
+#endif // defined(__clang__)
 
 template <class _Elem, class _OutIt>
 __PURE_APPDOMAIN_GLOBAL locale::id time_put<_Elem, _OutIt>::id;
 
 #ifdef __clang__
 #pragma clang diagnostic pop
-#endif // __clang__
+#endif // defined(__clang__)
 
 extern "C++" template <class _OutIt>
 class time_put<wchar_t, _OutIt> : public locale::facet { // facet for converting encoded times to wchar_t text
@@ -808,7 +951,23 @@ public:
                     _Specifier = _Ctype_fac.narrow(*_Fmtfirst);
                 }
 
-                _Dest = do_put(_Dest, _Iosbase, _Fill, _Pt, _Specifier, _Modifier); // convert a single field
+                if (_Specifier == '%' && _Modifier == '\0') {
+                    // if the specifier is percent and no modifier is set, just append it
+                    *_Dest++ = _Percent;
+                } else if (!_Is_valid_strftime_specifier(_Specifier)) {
+                    // no valid specifier, directly copy as literal elements
+                    *_Dest++ = _Percent;
+                    if (_Modifier != '\0') {
+                        *_Dest++ = _Raw;
+                    }
+                    *_Dest++ = *_Fmtfirst;
+                } else {
+                    if (_Is_valid_strftime_tm_data(_Specifier, _Pt)) {
+                        _Dest = do_put(_Dest, _Iosbase, _Fill, _Pt, _Specifier, _Modifier); // convert a single field
+                    } else {
+                        *_Dest++ = _Elem('?');
+                    }
+                }
             }
         }
 
@@ -893,14 +1052,14 @@ private:
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdllimport-static-field-def"
-#endif // __clang__
+#endif // defined(__clang__)
 
 template <class _OutIt>
 __PURE_APPDOMAIN_GLOBAL locale::id time_put<wchar_t, _OutIt>::id;
 
 #ifdef __clang__
 #pragma clang diagnostic pop
-#endif // __clang__
+#endif // defined(__clang__)
 
 #if defined(_CRTBLD)
 
@@ -924,14 +1083,15 @@ public:
                 *_Dest++ = _Fmtfirst[-1];
                 break;
             } else { // get specifier after %
-                char _Specifier = _Ctype_fac.narrow(*_Fmtfirst);
+                _Elem _Raw      = *_Fmtfirst;
+                char _Specifier = _Ctype_fac.narrow(_Raw);
                 char _Modifier  = '\0';
                 _Elem _Percent  = _Fmtfirst[-1];
 
                 if (_Specifier == 'E' || _Specifier == 'O' || _Specifier == 'Q' || _Specifier == '#') {
                     if (++_Fmtfirst == _Fmtlast) { // no specifier, copy %[E0Q#] as literal elements
                         *_Dest++ = _Percent;
-                        *_Dest++ = _Specifier;
+                        *_Dest++ = _Raw;
                         break;
                     }
 
@@ -940,7 +1100,23 @@ public:
                     _Specifier = _Ctype_fac.narrow(*_Fmtfirst);
                 }
 
-                _Dest = do_put(_Dest, _Iosbase, _Fill, _Pt, _Specifier, _Modifier); // convert a single field
+                if (_Specifier == '%' && _Modifier == '\0') {
+                    // if the specifier is percent and no modifier is set, just append it
+                    *_Dest++ = _Percent;
+                } else if (!_Is_valid_strftime_specifier(_Specifier)) {
+                    // no valid specifier, directly copy as literal elements
+                    *_Dest++ = _Percent;
+                    if (_Modifier != '\0') {
+                        *_Dest++ = _Raw;
+                    }
+                    *_Dest++ = *_Fmtfirst;
+                } else {
+                    if (_Is_valid_strftime_tm_data(_Specifier, _Pt)) {
+                        _Dest = do_put(_Dest, _Iosbase, _Fill, _Pt, _Specifier, _Modifier); // convert a single field
+                    } else {
+                        *_Dest++ = _Elem('?');
+                    }
+                }
             }
         }
 
@@ -1025,14 +1201,14 @@ private:
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdllimport-static-field-def"
-#endif // __clang__
+#endif // defined(__clang__)
 
 template <class _OutIt>
 __PURE_APPDOMAIN_GLOBAL locale::id time_put<unsigned short, _OutIt>::id;
 
 #ifdef __clang__
 #pragma clang diagnostic pop
-#endif // __clang__
+#endif // defined(__clang__)
 #endif // defined(_CRTBLD)
 
 _EXPORT_STD template <class _Elem, class _OutIt = ostreambuf_iterator<_Elem, char_traits<_Elem>>>
@@ -1072,7 +1248,7 @@ template class _CRTIMP2_PURE_IMPORT
 template _CRTIMP2_PURE void __CLR_OR_THIS_CALL
     time_get<unsigned short, istreambuf_iterator<unsigned short, char_traits<unsigned short>>>::_Getvals(
         wchar_t, const _Locinfo&);
-#endif // __FORCE_INSTANCE
+#endif // defined(__FORCE_INSTANCE)
 #endif // defined(_DLL_CPPLIB)
 _STD_END
 

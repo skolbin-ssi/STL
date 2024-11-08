@@ -23,21 +23,21 @@ constexpr void smoke_test() {
     {
         // Validate sized ranges
         auto result = equal(x, y, cmp, get_first, get_second);
-        STATIC_ASSERT(same_as<decltype(result), bool>);
+        static_assert(same_as<decltype(result), bool>);
         assert(result);
         assert(!equal(x, y, cmp, get_first, get_first));
     }
     {
         // Validate non-sized ranges
         auto result = equal(basic_borrowed_range{x}, basic_borrowed_range{y}, cmp, get_first, get_second);
-        STATIC_ASSERT(same_as<decltype(result), bool>);
+        static_assert(same_as<decltype(result), bool>);
         assert(result);
         assert(!equal(basic_borrowed_range{x}, basic_borrowed_range{y}, cmp, get_first, get_first));
     }
     {
         // Validate sized iterator + sentinel pairs
         auto result = equal(x.begin(), x.end(), y.begin(), y.end(), cmp, get_first, get_second);
-        STATIC_ASSERT(same_as<decltype(result), bool>);
+        static_assert(same_as<decltype(result), bool>);
         assert(result);
         assert(!equal(x.begin(), x.end(), y.begin(), y.end(), cmp, get_first, get_first));
     }
@@ -47,7 +47,7 @@ constexpr void smoke_test() {
         basic_borrowed_range wrapped_y{y};
         auto result =
             equal(wrapped_x.begin(), wrapped_x.end(), wrapped_y.begin(), wrapped_y.end(), cmp, get_first, get_second);
-        STATIC_ASSERT(same_as<decltype(result), bool>);
+        static_assert(same_as<decltype(result), bool>);
         assert(result);
     }
     {
@@ -79,10 +79,15 @@ constexpr void smoke_test() {
         assert(!equal(begin(arr1), unreachable_sentinel, begin(arr2), end(arr2)));
         assert(!equal(begin(arr1), end(arr1), begin(arr2), unreachable_sentinel));
     }
+    {
+        // Validate GH-3550: "<ranges>: ranges::equal does not work for ranges with integer-class range_difference_t"
+        auto v = ranges::subrange{std::views::iota(0ull, 10ull)} | std::views::drop(2);
+        assert(equal(v, v));
+    }
 }
 
 int main() {
-    STATIC_ASSERT((smoke_test(), true));
+    static_assert((smoke_test(), true));
     smoke_test();
 }
 
@@ -116,6 +121,6 @@ struct instantiator {
     }
 };
 
-#ifndef _PREFAST_ // TRANSITION, GH-1030
+#if !defined(_PREFAST_) && !defined(__EDG__) // TRANSITION, GH-1030 and GH-3567
 template void test_in_in<instantiator, const int, const int>();
-#endif // TRANSITION, GH-1030
+#endif // ^^^ no workaround ^^^

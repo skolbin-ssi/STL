@@ -17,6 +17,7 @@
 #endif // _HAS_CXX17
 
 #if _HAS_CXX20
+#include <compare>
 #include <span>
 #endif // _HAS_CXX20
 
@@ -105,7 +106,9 @@ struct StatefulDerived2 : EmptyBase, StatefulBase {};
 #ifdef __cpp_lib_is_pointer_interconvertible
 STATIC_ASSERT(is_pointer_interconvertible_base_of_v<EmptyBase, EmptyDerived>);
 STATIC_ASSERT(is_pointer_interconvertible_base_of_v<StatefulBase, StatefulDerived>);
+#ifndef __EDG__ // TRANSITION, VSO-1849453
 STATIC_ASSERT(!is_pointer_interconvertible_base_of_v<EmptyBase, StatefulDerived>);
+#endif // ^^^ no workaround ^^^
 STATIC_ASSERT(is_pointer_interconvertible_base_of_v<StatefulBase, StatefulDerived2>);
 STATIC_ASSERT(is_pointer_interconvertible_base_of_v<EmptyBase, StatefulDerived2>);
 #endif // __cpp_lib_is_pointer_interconvertible
@@ -639,40 +642,110 @@ void test_algorithms(CopyFn copy_fn) {
     }
 }
 
-template <class CopyFn>
-void test_uninitialized_algorithms(CopyFn copy_fn) {
-    test_algorithms(copy_fn);
+#if _HAS_CXX20
+template <class T = int>
+struct MyIterator { // A contiguous iterator with a weirdly narrow difference type
+    using iterator_concept = contiguous_iterator_tag;
+    using value_type       = T;
+    using difference_type  = short;
 
-    { // Test const destination
-        int src[10]      = {5, 7, 3, 4, 6, 4, 7, 1, 9, 5};
-        int expected[10] = {5, 7, 3, 4, 6, 4, 7, 1, 9, 5};
-        int dst[10]{};
+    value_type* ptr = nullptr;
 
-        copy_fn(begin(src), end(src), cbegin(dst));
+    MyIterator() = default;
+    explicit MyIterator(value_type* p) : ptr{p} {}
 
-        assert(equal(begin(expected), end(expected), begin(dst), end(dst)));
+    value_type& operator*() const {
+        return *ptr;
+    }
+    value_type* operator->() const {
+        return ptr;
     }
 
-    { // Test move_iterator with const destination
-        int src[10]      = {5, 7, 3, 4, 6, 4, 7, 1, 9, 5};
-        int expected[10] = {5, 7, 3, 4, 6, 4, 7, 1, 9, 5};
-        int dst[10]{};
-
-        copy_fn(make_move_iterator(begin(src)), make_move_iterator(end(src)), cbegin(dst));
-
-        assert(equal(begin(expected), end(expected), begin(dst), end(dst)));
+    MyIterator& operator++() {
+        ++ptr;
+        return *this;
+    }
+    MyIterator operator++(int) {
+        auto tmp = *this;
+        ++ptr;
+        return tmp;
     }
 
-    { // Test vector with const destination
-        vector<int> src      = {3, 6, 4, 7, 3};
-        vector<int> expected = {3, 6, 4, 7, 3};
-        vector<int> dst      = {0, 0, 0, 0, 0};
-
-        copy_fn(begin(src), end(src), cbegin(dst));
-
-        assert(equal(begin(expected), end(expected), begin(dst), end(dst)));
+    MyIterator& operator--() {
+        --ptr;
+        return *this;
     }
+    MyIterator operator--(int) {
+        auto tmp = *this;
+        --ptr;
+        return tmp;
+    }
+
+    auto operator<=>(const MyIterator&) const = default;
+
+    value_type& operator[](difference_type n) const {
+        return ptr[n];
+    }
+
+    MyIterator& operator+=(difference_type n) {
+        ptr += n;
+        return *this;
+    }
+    MyIterator& operator-=(difference_type n) {
+        ptr -= n;
+        return *this;
+    }
+    difference_type operator-(const MyIterator& that) const {
+        return ptr - that.ptr;
+    }
+    MyIterator operator+(difference_type n) const {
+        return MyIterator{ptr + n};
+    }
+    MyIterator operator-(difference_type n) const {
+        return MyIterator{ptr - n};
+    }
+    friend MyIterator operator+(difference_type n, const MyIterator& i) {
+        return i + n;
+    }
+};
+static_assert(contiguous_iterator<MyIterator<int>>);
+
+void test_copy_n_regressions() {
+    const int src = 1729;
+    int x         = 100;
+
+    // _Copy_memmove_n was adding a size_t to an iterator without converting to its difference_type:
+    //  warning C4267: 'argument': conversion from 'size_t' to 'MyIterator::difference_type', possible loss of data
+    copy_n(MyIterator{}, -42, MyIterator{});
+    copy_n(MyIterator{}, 0, MyIterator{});
+    copy_n(MyIterator{&src}, 1, MyIterator{&x});
+    assert(x == 1729);
+    x = 100;
+
+    copy_n(&src, -42, &x);
+    assert(x == 100);
+    copy_n(&src, 0, &x);
+    assert(x == 100);
+    copy_n(&src, 1, &x);
+    assert(x == 1729);
+    x = 100;
+
+    // ranges::copy_n wasn't guarding against negative n when calling the memmove optimization
+    ranges::copy_n(MyIterator{}, -42, MyIterator{});
+    ranges::copy_n(MyIterator{}, 0, MyIterator{});
+    ranges::copy_n(MyIterator{&src}, 1, MyIterator{&x});
+    assert(x == 1729);
+    x = 100;
+
+    ranges::copy_n(&src, -42, &x);
+    assert(x == 100);
+    ranges::copy_n(&src, 0, &x);
+    assert(x == 100);
+    ranges::copy_n(&src, 1, &x);
+    assert(x == 1729);
+    x = 100;
 }
+#endif // _HAS_CXX20
 
 int main() {
     test_algorithms([](auto begin, auto end, auto out) { copy(begin, end, out); });
@@ -682,17 +755,15 @@ int main() {
     test_algorithms([](auto begin, auto end, auto out) { move(begin, end, out); });
     test_algorithms([](auto begin, auto end, auto out) { move_backward(begin, end, next(out, distance(begin, end))); });
 
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) { uninitialized_copy(begin, end, out); });
-    test_uninitialized_algorithms(
-        [](auto begin, auto end, auto out) { uninitialized_copy_n(begin, distance(begin, end), out); });
+    test_algorithms([](auto begin, auto end, auto out) { uninitialized_copy(begin, end, out); });
+    test_algorithms([](auto begin, auto end, auto out) { uninitialized_copy_n(begin, distance(begin, end), out); });
 
 #if _HAS_CXX17
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) { uninitialized_move(begin, end, out); });
-    test_uninitialized_algorithms(
-        [](auto begin, auto end, auto out) { uninitialized_move_n(begin, distance(begin, end), out); });
+    test_algorithms([](auto begin, auto end, auto out) { uninitialized_move(begin, end, out); });
+    test_algorithms([](auto begin, auto end, auto out) { uninitialized_move_n(begin, distance(begin, end), out); });
 #endif // _HAS_CXX17
 
-#ifdef __cpp_lib_concepts
+#if _HAS_CXX20
     test_algorithms([](auto begin, auto end, auto out) { ranges::copy(begin, end, out); });
     test_algorithms([](auto begin, auto end, auto out) { ranges::copy_n(begin, distance(begin, end), out); });
     test_algorithms([](auto begin, auto end, auto out) {
@@ -714,36 +785,38 @@ int main() {
         }
     });
 
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_copy(begin, end, out, next(out, distance(begin, end)));
     });
-    test_uninitialized_algorithms(
+    test_algorithms(
         [](auto begin, auto end, auto out) { ranges::uninitialized_copy(begin, end, out, unreachable_sentinel); });
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_copy(begin, unreachable_sentinel, out, next(out, distance(begin, end)));
     });
 
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_copy_n(begin, distance(begin, end), out, next(out, distance(begin, end)));
     });
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_copy_n(begin, distance(begin, end), out, unreachable_sentinel);
     });
 
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_move(begin, end, out, next(out, distance(begin, end)));
     });
-    test_uninitialized_algorithms(
+    test_algorithms(
         [](auto begin, auto end, auto out) { ranges::uninitialized_move(begin, end, out, unreachable_sentinel); });
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_move(begin, unreachable_sentinel, out, next(out, distance(begin, end)));
     });
 
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_move_n(begin, distance(begin, end), out, next(out, distance(begin, end)));
     });
-    test_uninitialized_algorithms([](auto begin, auto end, auto out) {
+    test_algorithms([](auto begin, auto end, auto out) {
         ranges::uninitialized_move_n(begin, distance(begin, end), out, unreachable_sentinel);
     });
-#endif // __cpp_lib_concepts
+
+    test_copy_n_regressions();
+#endif // _HAS_CXX20
 }

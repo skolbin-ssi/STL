@@ -50,8 +50,8 @@ namespace {
             ios_base::out | ios_base::in | ios_base::trunc | ios_base::binary | ios_base::_Noreplace,
         };
 
-        FILE* fp                     = nullptr;
-        ios_base::openmode atendflag = mode & ios_base::ate;
+        FILE* fp          = nullptr;
+        const bool at_end = (mode & ios_base::ate) != 0;
 
         if (mode & ios_base::_Nocreate) {
             mode |= ios_base::in; // file must exist
@@ -75,7 +75,7 @@ namespace {
             return nullptr; // open failed
         }
 
-        if (atendflag && fseek(fp, 0, SEEK_END) != 0) {
+        if (at_end && fseek(fp, 0, SEEK_END) != 0) {
             fclose(fp); // can't position at end
             return nullptr;
         }
@@ -96,6 +96,7 @@ _CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(
     return _Xfiopen(filename, mode, prot);
 }
 
+// TRANSITION, ABI: preserved for binary compatibility
 _CRTIMP2_PURE FILE* __CLRCALL_PURE_OR_CDECL _Fiopen(
     const unsigned short* _Filename, ios_base::openmode _Mode, int _Prot) { // open file with wide name
     return _Fiopen(reinterpret_cast<const wchar_t*>(_Filename), _Mode, _Prot);

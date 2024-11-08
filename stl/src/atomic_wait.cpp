@@ -5,12 +5,14 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <new>
 #include <thread>
 
 #include <Windows.h>
 
 namespace {
+    constexpr unsigned long long _Atomic_wait_no_deadline = 0xFFFF'FFFF'FFFF'FFFF;
 
     constexpr size_t _Wait_table_size_power = 8;
     constexpr size_t _Wait_table_size       = 1 << _Wait_table_size_power;
@@ -58,7 +60,6 @@ namespace {
         SRWLOCK* _Locked;
     };
 
-
 #pragma warning(push)
 #pragma warning(disable : 4324) // structure was padded due to alignment specifier
     struct alignas(_STD hardware_destructive_interference_size) _Wait_table_entry {
@@ -86,7 +87,7 @@ namespace {
         if (GetLastError() != ERROR_TIMEOUT) {
             _CSTD abort();
         }
-#endif // _DEBUG
+#endif // defined(_DEBUG)
     }
 
 #ifndef _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE
@@ -95,7 +96,7 @@ namespace {
 #else // ^^^ _STL_WIN32_WINNT >= _STL_WIN32_WINNT_WIN8 / _STL_WIN32_WINNT < _STL_WIN32_WINNT_WIN8 vvv
 #define _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE 0
 #endif // ^^^ _STL_WIN32_WINNT < _STL_WIN32_WINNT_WIN8 ^^^
-#endif // _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE
+#endif // !defined(_ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE)
 
 #if _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE
 
@@ -106,7 +107,6 @@ namespace {
 #define __crtWakeByAddressAll    WakeByAddressAll
 
 #else // ^^^ _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE / !_ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE vvv
-
 
     struct _Wait_functions_table {
         _STD atomic<decltype(&::WaitOnAddress)> _Pfn_WaitOnAddress{nullptr};
@@ -120,7 +120,8 @@ namespace {
     void _Force_wait_functions_srwlock_only() noexcept {
         auto _Local = _Wait_functions._Api_level.load(_STD memory_order_acquire);
         if (_Local <= __std_atomic_api_level::__detecting) {
-            while (!_Wait_functions._Api_level.compare_exchange_weak(_Local, __std_atomic_api_level::__has_srwlock)) {
+            while (!_Wait_functions._Api_level.compare_exchange_weak(
+                _Local, __std_atomic_api_level::__has_srwlock, _STD memory_order_acq_rel)) {
                 if (_Local > __std_atomic_api_level::__detecting) {
                     return;
                 }
@@ -129,7 +130,8 @@ namespace {
     }
 
     [[nodiscard]] __std_atomic_api_level _Init_wait_functions(__std_atomic_api_level _Level) {
-        while (!_Wait_functions._Api_level.compare_exchange_weak(_Level, __std_atomic_api_level::__detecting)) {
+        while (!_Wait_functions._Api_level.compare_exchange_weak(
+            _Level, __std_atomic_api_level::__detecting, _STD memory_order_acq_rel)) {
             if (_Level > __std_atomic_api_level::__detecting) {
                 return _Level;
             }
@@ -201,28 +203,9 @@ namespace {
         }
     }
 #endif // _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE
-
-    [[nodiscard]] unsigned char __std_atomic_compare_exchange_128_fallback(
-        _Inout_bytecount_(16) long long* _Destination, _In_ long long _ExchangeHigh, _In_ long long _ExchangeLow,
-        _Inout_bytecount_(16) long long* _ComparandResult) noexcept {
-        static SRWLOCK _Mtx = SRWLOCK_INIT;
-        _SrwLock_guard _Guard{_Mtx};
-        if (_Destination[0] == _ComparandResult[0] && _Destination[1] == _ComparandResult[1]) {
-            _ComparandResult[0] = _Destination[0];
-            _ComparandResult[1] = _Destination[1];
-            _Destination[0]     = _ExchangeLow;
-            _Destination[1]     = _ExchangeHigh;
-            return static_cast<unsigned char>(true);
-        } else {
-            _ComparandResult[0] = _Destination[0];
-            _ComparandResult[1] = _Destination[1];
-            return static_cast<unsigned char>(false);
-        }
-    }
 } // unnamed namespace
 
-
-_EXTERN_C
+extern "C" {
 int __stdcall __std_atomic_wait_direct(const void* const _Storage, void* const _Comparand, const size_t _Size,
     const unsigned long _Remaining_timeout) noexcept {
 #if _ATOMIC_WAIT_ON_ADDRESS_STATICALLY_AVAILABLE == 0
@@ -320,7 +303,7 @@ int __stdcall __std_atomic_wait_indirect(const void* _Storage, void* _Comparand,
             return FALSE;
         }
 
-        if (_Remaining_timeout != _Atomic_wait_no_timeout) {
+        if (_Remaining_timeout != __std_atomic_wait_no_timeout) {
             // spurious wake to recheck the clock
             return TRUE;
         }
@@ -336,8 +319,8 @@ unsigned long long __stdcall __std_atomic_wait_get_deadline(const unsigned long 
 }
 
 unsigned long __stdcall __std_atomic_wait_get_remaining_timeout(unsigned long long _Deadline) noexcept {
-    static_assert(_Atomic_wait_no_timeout == INFINITE,
-        "_Atomic_wait_no_timeout is passed directly to underlying API, so should match it");
+    static_assert(__std_atomic_wait_no_timeout == INFINITE,
+        "__std_atomic_wait_no_timeout is passed directly to underlying API, so should match it");
 
     if (_Deadline == _Atomic_wait_no_deadline) {
         return INFINITE;
@@ -397,41 +380,27 @@ _Smtx_t* __stdcall __std_atomic_get_mutex(const void* const _Key) noexcept {
 }
 #pragma warning(pop)
 
+// TRANSITION, ABI: preserved for binary compatibility
 [[nodiscard]] unsigned char __stdcall __std_atomic_compare_exchange_128(_Inout_bytecount_(16) long long* _Destination,
     _In_ long long _ExchangeHigh, _In_ long long _ExchangeLow,
     _Inout_bytecount_(16) long long* _ComparandResult) noexcept {
-#if !defined(_WIN64)
-    return __std_atomic_compare_exchange_128_fallback(_Destination, _ExchangeHigh, _ExchangeLow, _ComparandResult);
-#elif _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 1
+#ifdef _WIN64
     return _InterlockedCompareExchange128(_Destination, _ExchangeHigh, _ExchangeLow, _ComparandResult);
-#else // ^^^ _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 1 / _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 0 vvv
-    if (__std_atomic_has_cmpxchg16b()) {
-        return _InterlockedCompareExchange128(_Destination, _ExchangeHigh, _ExchangeLow, _ComparandResult);
-    }
-
-    return __std_atomic_compare_exchange_128_fallback(_Destination, _ExchangeHigh, _ExchangeLow, _ComparandResult);
-#endif // ^^^ _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 0
+#else // ^^^ 64-bit / 32-bit vvv
+    (void) _Destination;
+    (void) _ExchangeHigh;
+    (void) _ExchangeLow;
+    (void) _ComparandResult;
+    _CSTD abort();
+#endif // ^^^ 32-bit ^^^
 }
 
+// TRANSITION, ABI: preserved for binary compatibility
 [[nodiscard]] char __stdcall __std_atomic_has_cmpxchg16b() noexcept {
-#if !defined(_WIN64)
-    return false;
-#elif _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 1
+#ifdef _WIN64
     return true;
-#else // ^^^ _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 1 / _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 0 vvv
-    constexpr char _Cmpxchg_Absent  = 0;
-    constexpr char _Cmpxchg_Present = 1;
-    constexpr char _Cmpxchg_Unknown = 2;
-
-    static std::atomic<char> _Cached_value{_Cmpxchg_Unknown};
-
-    char _Value = _Cached_value.load(std::memory_order_relaxed);
-    if (_Value == _Cmpxchg_Unknown) {
-        _Value = IsProcessorFeaturePresent(PF_COMPARE_EXCHANGE128) ? _Cmpxchg_Present : _Cmpxchg_Absent;
-        _Cached_value.store(_Value, std::memory_order_relaxed);
-    }
-
-    return _Value;
-#endif // ^^^ _STD_ATOMIC_ALWAYS_USE_CMPXCHG16B == 0
+#else
+    _CSTD abort();
+#endif
 }
-_END_EXTERN_C
+} // extern "C"

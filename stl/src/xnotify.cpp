@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// thread exit notification functions
-
 #include <cstdlib>
+#include <mutex>
 #include <xthreads.h>
 
 #include <Windows.h>
@@ -25,19 +24,19 @@ namespace {
     };
 
     _At_thread_exit_block _Thread_exit_data;
+
+    constinit std::mutex _Thread_exit_data_mutex;
 } // unnamed namespace
 
-_EXTERN_C
+extern "C" {
 
-void _Lock_at_thread_exit_mutex();
-void _Unlock_at_thread_exit_mutex();
+_CRTIMP2_PURE void __cdecl _Cnd_register_at_thread_exit(_Cnd_t cnd, _Mtx_t mtx, int* p) noexcept {
+    // register condition variable and mutex for cleanup at thread exit
 
-void _Cnd_register_at_thread_exit(
-    _Cnd_t cnd, _Mtx_t mtx, int* p) { // register condition variable and mutex for cleanup at thread exit
     // find block with available space
     _At_thread_exit_block* block = &_Thread_exit_data;
 
-    _Lock_at_thread_exit_mutex();
+    std::lock_guard _Lock{_Thread_exit_data_mutex};
     while (block != nullptr) { // loop through list of blocks
         if (block->num_used == _Nitems) { // block is full; move to next block and allocate
             if (block->next == nullptr) {
@@ -59,14 +58,15 @@ void _Cnd_register_at_thread_exit(
             block = nullptr;
         }
     }
-    _Unlock_at_thread_exit_mutex();
 }
 
-void _Cnd_unregister_at_thread_exit(_Mtx_t mtx) { // unregister condition variable/mutex for cleanup at thread exit
+_CRTIMP2_PURE void __cdecl _Cnd_unregister_at_thread_exit(_Mtx_t mtx) noexcept {
+    // unregister condition variable/mutex for cleanup at thread exit
+
     // find condition variables waiting for this thread to exit
     _At_thread_exit_block* block = &_Thread_exit_data;
 
-    _Lock_at_thread_exit_mutex();
+    std::lock_guard _Lock{_Thread_exit_data_mutex};
     while (block != nullptr) { // loop through list of blocks
         for (int i = 0; block->num_used != 0 && i < _Nitems; ++i) {
             if (block->data[i].mtx == mtx) { // release slot
@@ -77,15 +77,16 @@ void _Cnd_unregister_at_thread_exit(_Mtx_t mtx) { // unregister condition variab
 
         block = block->next;
     }
-    _Unlock_at_thread_exit_mutex();
 }
 
-void _Cnd_do_broadcast_at_thread_exit() { // notify condition variables waiting for this thread to exit
+_CRTIMP2_PURE void __cdecl _Cnd_do_broadcast_at_thread_exit() noexcept {
+    // notify condition variables waiting for this thread to exit
+
     // find condition variables waiting for this thread to exit
     _At_thread_exit_block* block       = &_Thread_exit_data;
     const unsigned int currentThreadId = _Thrd_id();
 
-    _Lock_at_thread_exit_mutex();
+    std::lock_guard _Lock{_Thread_exit_data_mutex};
     while (block != nullptr) { // loop through list of blocks
         for (int i = 0; block->num_used != 0 && i < _Nitems; ++i) {
             if (block->data[i].mtx != nullptr && block->data[i].id._Id == currentThreadId) { // notify and release slot
@@ -101,10 +102,9 @@ void _Cnd_do_broadcast_at_thread_exit() { // notify condition variables waiting 
 
         block = block->next;
     }
-    _Unlock_at_thread_exit_mutex();
 }
 
-_END_EXTERN_C
+} // extern "C"
 
 /*
  * This file is derived from software bearing the following

@@ -23,20 +23,19 @@ constexpr bool test_P2273R3_constexpr_unique_ptr() {
         assert(p1 == p1);
         assert(p1 != p2);
 
-#if defined(__EDG__) || defined(__clang__) // TRANSITION, DevCom-1436243
+#if defined(__clang__) || defined(__EDG__) // TRANSITION, DevCom-1436243
         auto p3 = make_unique<int[]>(10);
         auto p4 = make_unique_for_overwrite<int[]>(4);
         swap(p3, p4);
         assert(p3 == p3);
         assert(p3 != p4);
-#endif // defined(__EDG__) || defined(__clang__)
+#endif // ^^^ no workaround ^^^
 
         auto p5 = unique_ptr<int>{nullptr};
         assert(p5 == nullptr);
         assert(nullptr == p5);
         assert(!(p5 != nullptr));
         assert(!(nullptr != p5));
-#ifndef __EDG__ // TRANSITION, DevCom-1670927
         assert(!(p5 < nullptr));
         assert(!(nullptr < p5));
         assert(p5 <= nullptr);
@@ -47,7 +46,6 @@ constexpr bool test_P2273R3_constexpr_unique_ptr() {
         assert(nullptr >= p5);
         assert((p5 <=> nullptr) == strong_ordering::equal);
         assert((nullptr <=> p5) == strong_ordering::equal);
-#endif // !__EDG__
     }
 
     // changes in [unique.ptr.dltr.dflt] and [unique.ptr.dltr.dflt1]

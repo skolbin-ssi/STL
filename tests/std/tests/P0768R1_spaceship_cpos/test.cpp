@@ -31,10 +31,10 @@ struct CpoResultImpl<CPO, E, F> {
 };
 
 template <const auto& CPO, typename E, typename F = E>
-using CpoResult = typename CpoResultImpl<CPO, E, F>::type;
+using CpoResult = CpoResultImpl<CPO, E, F>::type;
 
 template <const auto& CPO, typename E, typename F = E>
-inline constexpr bool NoexceptCpo = noexcept(CPO(declval<E>(), declval<F>()));
+constexpr bool NoexceptCpo = noexcept(CPO(declval<E>(), declval<F>()));
 
 // Test when the decayed types differ.
 static_assert(is_same_v<CpoResult<std::strong_order, int, long>, IllFormed>); // [cmp.alg]/1.1
@@ -76,8 +76,8 @@ namespace TestAdl {
     };
 
     template <bool NE>
-    [[nodiscard]] constexpr strong_ordering strong_order(
-        const StrongType<NE>& left, const StrongType<NE>& right) noexcept(NE) {
+    [[nodiscard]] constexpr strong_ordering strong_order(const StrongType<NE>& left, const StrongType<NE>& right)
+        noexcept(NE) {
         return left.val <=> right.val;
     }
 
@@ -97,8 +97,8 @@ namespace TestAdl {
     };
 
     template <bool NE>
-    [[nodiscard]] constexpr partial_ordering partial_order(
-        const PartialType<NE>& left, const PartialType<NE>& right) noexcept(NE) {
+    [[nodiscard]] constexpr partial_ordering partial_order(const PartialType<NE>& left, const PartialType<NE>& right)
+        noexcept(NE) {
         return left.val <=> right.val;
     }
 } // namespace TestAdl
@@ -173,9 +173,9 @@ struct Fallback {
     // I == 2: E == F is ill-formed.
     // I == 3: E == F returns int.
     // I == 4: E == F returns void.
-    // clang-format off
-    constexpr auto operator==(const Fallback& other) const noexcept(I != 1) requires (I != 2) {
-        // clang-format on
+    constexpr auto operator==(const Fallback& other) const noexcept(I != 1)
+        requires (I != 2)
+    {
         const bool result{val == other.val && val != UnorderedVal};
 
         if constexpr (I == 3) {
@@ -191,9 +191,9 @@ struct Fallback {
     // I == 6: E < F is ill-formed.
     // I == 7: E < F returns int.
     // I == 8: E < F returns void.
-    // clang-format off
-    constexpr auto operator<(const Fallback& other) const noexcept(I != 5) requires (I != 6) {
-        // clang-format on
+    constexpr auto operator<(const Fallback& other) const noexcept(I != 5)
+        requires (I != 6)
+    {
         const bool result{val < other.val && val != UnorderedVal && other.val != UnorderedVal};
 
         if constexpr (I == 7) {
@@ -206,17 +206,17 @@ struct Fallback {
     }
 
     // I == 9: F < E is ill-formed.
-    // clang-format off
-    constexpr bool operator<(Fallback&) const noexcept requires (I == 9) = delete;
-    // clang-format on
+    constexpr bool operator<(Fallback&) const noexcept
+        requires (I == 9)
+    = delete;
 
     // I == 10: F < E can throw.
     // I == 11: F < E returns int.
     // I == 12: F < E returns void.
     // I == 13: F < E returns bool.
-    // clang-format off
-    constexpr auto operator<(Fallback& other) const noexcept(I != 10) requires (I >= 10 && I <= 13) {
-        // clang-format on
+    constexpr auto operator<(Fallback& other) const noexcept(I != 10)
+        requires (I >= 10 && I <= 13)
+    {
         const bool result{val < other.val && val != UnorderedVal && other.val != UnorderedVal};
 
         if constexpr (I == 11) {
@@ -505,7 +505,7 @@ constexpr void test_floating() {
             {10, bit_cast<float>(0xFFFFFFFFu)}, // negative quiet NaN, all payload bits set
             {10, bit_cast<float>(0xFFC01234u)}, // negative quiet NaN, some payload bits set
             {10, bit_cast<float>(0xFFC00000u)}, // negative quiet NaN, no payload bits set
-#endif // _M_CEE
+#endif // ^^^ no workaround ^^^
 #ifdef __clang__ // TRANSITION, MSVC "quiets" signaling NaNs into quiet NaNs when constant evaluated
             {10, bit_cast<float>(0xFFBFFFFFu)}, // negative signaling NaN, all payload bits set
             {10, bit_cast<float>(0xFF801234u)}, // negative signaling NaN, some payload bits set
@@ -532,7 +532,7 @@ constexpr void test_floating() {
             {90, bit_cast<float>(0x7FC00000u)}, // quiet NaN, no payload bits set
             {90, bit_cast<float>(0x7FC01234u)}, // quiet NaN, some payload bits set
             {90, bit_cast<float>(0x7FFFFFFFu)}, // quiet NaN, all payload bits set
-#endif // _M_CEE
+#endif // ^^^ no workaround ^^^
         };
 
         test_ranked_values(rank_value_pairs);

@@ -3,7 +3,6 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _HASH_SET_
 #define _HASH_SET_
 #include <yvals_core.h>
@@ -27,7 +26,6 @@ namespace stdext {
     using _STD swap;
     using _STD _Hash;
     using _STD _Is_nothrow_swappable;
-    using _STD _Swap_adl;
 
     template <class _Kty, // key type (same as value type)
         class _Tr, // comparator predicate type
@@ -55,6 +53,11 @@ namespace stdext {
         using _Deduce_key = const _Kty&;
         using key_equal   = _Tr;
 
+#if _HAS_CXX20 && defined(__EDG__) // TRANSITION, DevCom-10678753
+        template <class, class>
+        static constexpr bool _Supports_transparency = false;
+#endif // ^^^ workaround ^^^
+
         _Hset_traits() = default;
 
         _Hset_traits(const _Tr& _Traits) noexcept(_STD is_nothrow_copy_constructible_v<_Tr>) : _Tr(_Traits) {}
@@ -63,11 +66,6 @@ namespace stdext {
 
         _NODISCARD static const _Kty& _Kfn(const value_type& _Val) noexcept {
             return _Val;
-        }
-
-        _NODISCARD static int _Nonkfn(const value_type&) noexcept {
-            // extract "non-key" from element value (for container equality)
-            return 0;
         }
 
         _NODISCARD float& _Get_max_bucket_size() noexcept {
@@ -79,14 +77,15 @@ namespace stdext {
         }
 
         void swap(_Hset_traits& _Rhs) noexcept(_Is_nothrow_swappable<_Tr>::value) {
-            _Swap_adl(static_cast<_Tr&>(*this), static_cast<_Tr&>(_Rhs));
+            using _STD swap;
+            swap(static_cast<_Tr&>(*this), static_cast<_Tr&>(_Rhs)); // intentional ADL
             _STD swap(_Max_buckets, _Rhs._Max_buckets);
         }
 
         float _Max_buckets = 0.0F; // current maximum bucket size
     };
 
-    template <class _Kty, class _Tr = hash_compare<_Kty, less<_Kty>>, class _Alloc = allocator<_Kty>>
+    template <class _Kty, class _Tr = hash_compare<_Kty, _STD less<_Kty>>, class _Alloc = allocator<_Kty>>
     class hash_set : public _Hash<_Hset_traits<_Kty, _Tr, _Alloc, false>> { // hash table of key values, unique keys
     public:
         using _Mybase         = _Hash<_Hset_traits<_Kty, _Tr, _Alloc, false>>;
@@ -216,8 +215,8 @@ namespace stdext {
     };
 
     template <class _Kty, class _Tr, class _Alloc>
-    void swap(hash_set<_Kty, _Tr, _Alloc>& _Left, hash_set<_Kty, _Tr, _Alloc>& _Right) noexcept(
-        noexcept(_Left.swap(_Right))) {
+    void swap(hash_set<_Kty, _Tr, _Alloc>& _Left, hash_set<_Kty, _Tr, _Alloc>& _Right)
+        noexcept(noexcept(_Left.swap(_Right))) {
         _Left.swap(_Right);
     }
 
@@ -231,7 +230,7 @@ namespace stdext {
         return !(_Left == _Right);
     }
 
-    template <class _Kty, class _Tr = hash_compare<_Kty, less<_Kty>>, class _Alloc = allocator<_Kty>>
+    template <class _Kty, class _Tr = hash_compare<_Kty, _STD less<_Kty>>, class _Alloc = allocator<_Kty>>
     class hash_multiset
         : public _Hash<_Hset_traits<_Kty, _Tr, _Alloc, true>> { // hash table of key values, non-unique keys
     public:
@@ -359,8 +358,8 @@ namespace stdext {
     };
 
     template <class _Kty, class _Tr, class _Alloc>
-    void swap(hash_multiset<_Kty, _Tr, _Alloc>& _Left, hash_multiset<_Kty, _Tr, _Alloc>& _Right) noexcept(
-        noexcept(_Left.swap(_Right))) {
+    void swap(hash_multiset<_Kty, _Tr, _Alloc>& _Left, hash_multiset<_Kty, _Tr, _Alloc>& _Right)
+        noexcept(noexcept(_Left.swap(_Right))) {
         _Left.swap(_Right);
     }
 

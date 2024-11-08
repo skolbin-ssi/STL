@@ -7,6 +7,11 @@
 #include <compare>
 #include <type_traits>
 
+// See GH-3581 for details
+#ifdef __clang__
+#pragma clang diagnostic error "-Wzero-as-null-pointer-constant"
+#endif // __clang__
+
 enum class comp { equal, less, greater, unordered };
 
 template <comp Z, class T>
@@ -146,7 +151,6 @@ static_assert(test_common_type<std::strong_ordering, std::partial_ordering>());
 static_assert(test_common_type<std::strong_ordering, std::weak_ordering>());
 static_assert(test_common_type<std::strong_ordering, std::strong_ordering>());
 
-#ifdef __cpp_lib_concepts
 constexpr auto my_cmp_three_way = [](const auto& left, const auto& right) { return left <=> right; };
 
 template <class Left, class Right>
@@ -212,7 +216,6 @@ void test_algorithm() {
     assert((test_algorithm2<Ty1, Ty2>()));
     assert((test_algorithm2<Ty2, Ty1>()));
 }
-#endif // __cpp_lib_concepts
 
 int main() {
     static_assert(test_orderings());
@@ -221,12 +224,10 @@ int main() {
     static_assert(test_spaceships());
     test_spaceships();
 
-#ifdef __cpp_lib_concepts
     test_algorithm<int>();
     test_algorithm<char>();
     test_algorithm<unsigned char>();
     test_algorithm<int, char>();
     test_algorithm<int, unsigned char>();
     test_algorithm<char, unsigned char>();
-#endif // __cpp_lib_concepts
 }

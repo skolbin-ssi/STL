@@ -1,80 +1,81 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// condition variable functions
-
 #include <cstdlib>
 #include <internal_shared.h>
+#include <new>
 #include <type_traits>
 #include <xthreads.h>
 #include <xtimec.h>
 
 #include "primitives.hpp"
 
-struct _Cnd_internal_imp_t { // condition variable implementation for ConcRT
-    typename std::_Aligned_storage<Concurrency::details::stl_condition_variable_max_size,
-        Concurrency::details::stl_condition_variable_max_alignment>::type cv;
+extern "C" {
 
-    [[nodiscard]] Concurrency::details::stl_condition_variable_interface* _get_cv() noexcept {
-        // get pointer to implementation
-        return reinterpret_cast<Concurrency::details::stl_condition_variable_interface*>(&cv);
-    }
-};
-
-static_assert(sizeof(_Cnd_internal_imp_t) <= _Cnd_internal_imp_size, "incorrect _Cnd_internal_imp_size");
-static_assert(alignof(_Cnd_internal_imp_t) <= _Cnd_internal_imp_alignment, "incorrect _Cnd_internal_imp_alignment");
-
-void _Cnd_init_in_situ(const _Cnd_t cond) { // initialize condition variable in situ
-    Concurrency::details::create_stl_condition_variable(cond->_get_cv());
+// TRANSITION, ABI: preserved for binary compatibility (and _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+_CRTIMP2_PURE void __cdecl _Cnd_init_in_situ(const _Cnd_t cond) noexcept { // initialize condition variable in situ
+    new (cond) _Cnd_internal_imp_t;
 }
 
-void _Cnd_destroy_in_situ(const _Cnd_t cond) { // destroy condition variable in situ
-    cond->_get_cv()->destroy();
-}
+// TRANSITION, ABI: preserved for binary compatibility
+_CRTIMP2_PURE void __cdecl _Cnd_destroy_in_situ(_Cnd_t) noexcept {} // destroy condition variable in situ
 
-int _Cnd_init(_Cnd_t* const pcond) { // initialize
+// TRANSITION, ABI: preserved for binary compatibility
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_init(_Cnd_t* const pcond) noexcept { // initialize
     *pcond = nullptr;
 
     const auto cond = static_cast<_Cnd_t>(_calloc_crt(1, sizeof(_Cnd_internal_imp_t)));
     if (cond == nullptr) {
-        return _Thrd_nomem; // report alloc failed
+        return _Thrd_result::_Nomem; // report alloc failed
     }
 
     _Cnd_init_in_situ(cond);
     *pcond = cond;
-    return _Thrd_success;
+    return _Thrd_result::_Success;
 }
 
-void _Cnd_destroy(const _Cnd_t cond) { // clean up
+// TRANSITION, ABI: preserved for binary compatibility
+_CRTIMP2_PURE void __cdecl _Cnd_destroy(const _Cnd_t cond) noexcept { // clean up
     if (cond) { // something to do, do it
-        _Cnd_destroy_in_situ(cond);
         _free_crt(cond);
     }
 }
 
-int _Cnd_wait(const _Cnd_t cond, const _Mtx_t mtx) { // wait until signaled
-    const auto cs = static_cast<Concurrency::details::stl_critical_section_interface*>(_Mtx_getconcrtcs(mtx));
-    _Mtx_clear_owner(mtx);
-    cond->_get_cv()->wait(cs);
-    _Mtx_reset_owner(mtx);
-    return _Thrd_success; // TRANSITION, ABI: Always returns _Thrd_success
+// TRANSITION, ABI: should be static; dllexported for binary compatibility
+_CRTIMP2_PURE void __cdecl _Mtx_clear_owner(_Mtx_t mtx) noexcept { // set owner to nobody
+    mtx->_Thread_id = -1;
+    --mtx->_Count;
 }
 
-int _Cnd_timedwait(const _Cnd_t cond, const _Mtx_t mtx, const xtime* const target) { // wait until signaled or timeout
-    int res       = _Thrd_success;
-    const auto cs = static_cast<Concurrency::details::stl_critical_section_interface*>(_Mtx_getconcrtcs(mtx));
+// TRANSITION, ABI: should be static; dllexported for binary compatibility
+_CRTIMP2_PURE void __cdecl _Mtx_reset_owner(_Mtx_t mtx) noexcept { // set owner to current thread
+    mtx->_Thread_id = static_cast<long>(GetCurrentThreadId());
+    ++mtx->_Count;
+}
+
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_wait(const _Cnd_t cond, const _Mtx_t mtx) noexcept { // wait until signaled
+    _Mtx_clear_owner(mtx);
+    _Primitive_wait(cond, mtx);
+    _Mtx_reset_owner(mtx);
+    return _Thrd_result::_Success; // TRANSITION, ABI: Always succeeds
+}
+
+// TRANSITION, ABI: preserved for compatibility; wait until signaled or timeout
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_timedwait(
+    const _Cnd_t cond, const _Mtx_t mtx, const _timespec64* const target) noexcept {
+    _Thrd_result res = _Thrd_result::_Success;
     if (target == nullptr) { // no target time specified, wait on mutex
         _Mtx_clear_owner(mtx);
-        cond->_get_cv()->wait(cs);
+        _Primitive_wait(cond, mtx);
         _Mtx_reset_owner(mtx);
     } else { // target time specified, wait for it
-        xtime now;
-        xtime_get(&now, TIME_UTC);
+        _timespec64 now;
+        _Timespec64_get_sys(&now);
         _Mtx_clear_owner(mtx);
-        if (!cond->_get_cv()->wait_for(cs, _Xtime_diff_to_millis2(target, &now))) { // report timeout
-            xtime_get(&now, TIME_UTC);
+        if (!_Primitive_wait_for(cond, mtx, _Xtime_diff_to_millis2(target, &now))) { // report timeout
+            _Timespec64_get_sys(&now);
             if (_Xtime_diff_to_millis2(target, &now) == 0) {
-                res = _Thrd_timedout;
+                res = _Thrd_result::_Timedout;
             }
         }
         _Mtx_reset_owner(mtx);
@@ -82,15 +83,17 @@ int _Cnd_timedwait(const _Cnd_t cond, const _Mtx_t mtx, const xtime* const targe
     return res;
 }
 
-int _Cnd_signal(const _Cnd_t cond) { // release one waiting thread
-    cond->_get_cv()->notify_one();
-    return _Thrd_success; // TRANSITION, ABI: Always returns _Thrd_success
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_signal(const _Cnd_t cond) noexcept { // release one waiting thread
+    _Primitive_notify_one(cond);
+    return _Thrd_result::_Success; // TRANSITION, ABI: Always succeeds
 }
 
-int _Cnd_broadcast(const _Cnd_t cond) { // release all waiting threads
-    cond->_get_cv()->notify_all();
-    return _Thrd_success; // TRANSITION, ABI: Always returns _Thrd_success
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_broadcast(const _Cnd_t cond) noexcept { // release all waiting threads
+    _Primitive_notify_all(cond);
+    return _Thrd_result::_Success; // TRANSITION, ABI: Always succeeds
 }
+
+} // extern "C"
 
 /*
  * This file is derived from software bearing the following

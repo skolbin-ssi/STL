@@ -3,368 +3,119 @@
 
 <#
 .SYNOPSIS
-Sets up a machine to be an image for a scale set.
+Sets up a virtual machine to be an image for a hosted pool.
 
 .DESCRIPTION
-provision-image.ps1 runs on an existing, freshly provisioned virtual machine,
-and sets up that virtual machine as a build machine. After this is done,
-(outside of this script), we take that machine and make it an image to be copied
-for setting up new VMs in the scale set.
-
-This script must either be run as admin, or one must pass AdminUserPassword;
-if the script is run with AdminUserPassword, it runs itself again as an
-administrator.
-
-.PARAMETER AdminUserPassword
-The administrator user's password; if this is $null, or not passed, then the
-script assumes it's running on an administrator account.
+create-1es-hosted-pool.ps1 (running on an STL maintainer's machine) creates a "prototype" virtual machine in Azure,
+then runs provision-image.ps1 on that VM. This gives us full control over what we install for building and testing
+the STL. After provision-image.ps1 is done, create-1es-hosted-pool.ps1 makes an image of the prototype VM,
+creates a 1ES Hosted Pool that will spin up copies of the image as worker VMs, and finally deletes the prototype VM.
 #>
-param(
-  [string]$AdminUserPassword = $null
-)
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
-<#
-.SYNOPSIS
-Gets a random file path in the temp directory.
-
-.DESCRIPTION
-Get-TempFilePath takes an extension, and returns a path with a random
-filename component in the temporary directory with that extension.
-
-.PARAMETER Extension
-The extension to use for the path.
-#>
-Function Get-TempFilePath {
-  Param(
-    [String]$Extension
-  )
-
-  if ([String]::IsNullOrWhiteSpace($Extension)) {
-    throw 'Missing Extension'
-  }
-
-  $tempPath = [System.IO.Path]::GetTempPath()
-  $tempName = [System.IO.Path]::GetRandomFileName() + '.' + $Extension
-  return Join-Path $tempPath $tempName
+if ($Env:COMPUTERNAME -cne 'PROTOTYPE') {
+  Write-Error 'You should not run provision-image.ps1 on your local machine.'
 }
 
-<#
-.SYNOPSIS
-Downloads and extracts a ZIP file to a newly created temporary subdirectory.
-
-.DESCRIPTION
-DownloadAndExtractZip returns a path containing the extracted contents.
-
-.PARAMETER Url
-The URL of the ZIP file to download.
-#>
-Function DownloadAndExtractZip {
-  Param(
-    [String]$Url
-  )
-
-  if ([String]::IsNullOrWhiteSpace($Url)) {
-    throw 'Missing Url'
-  }
-
-  $ZipPath = Get-TempFilePath -Extension 'zip'
-  & curl.exe -L -o $ZipPath -s -S $Url
-  $TempSubdirPath = Get-TempFilePath -Extension 'dir'
-  Expand-Archive -Path $ZipPath -DestinationPath $TempSubdirPath -Force
-
-  return $TempSubdirPath
-}
-
-$TranscriptPath = 'C:\provision-image-transcript.txt'
-
-if ([string]::IsNullOrEmpty($AdminUserPassword)) {
-  Start-Transcript -Path $TranscriptPath -UseMinimalHeader
-} else {
-  Write-Host 'AdminUser password supplied; switching to AdminUser.'
-
-  # https://docs.microsoft.com/en-us/sysinternals/downloads/psexec
-  $PsToolsZipUrl = 'https://download.sysinternals.com/files/PSTools.zip'
-  Write-Host "Downloading: $PsToolsZipUrl"
-  $ExtractedPsToolsPath = DownloadAndExtractZip -Url $PsToolsZipUrl
-  $PsExecPath = Join-Path $ExtractedPsToolsPath 'PsExec64.exe'
-
-  # https://github.com/PowerShell/PowerShell/releases/latest
-  $PowerShellZipUrl = 'https://github.com/PowerShell/PowerShell/releases/download/v7.3.2/PowerShell-7.3.2-win-x64.zip'
-  Write-Host "Downloading: $PowerShellZipUrl"
-  $ExtractedPowerShellPath = DownloadAndExtractZip -Url $PowerShellZipUrl
-  $PwshPath = Join-Path $ExtractedPowerShellPath 'pwsh.exe'
-
-  $PsExecArgs = @(
-    '-u',
-    'AdminUser',
-    '-p',
-    'AdminUserPassword_REDACTED',
-    '-accepteula',
-    '-i',
-    '-h',
-    $PwshPath,
-    '-ExecutionPolicy',
-    'Unrestricted',
-    '-File',
-    $PSCommandPath
-  )
-  Write-Host "Executing: $PsExecPath $PsExecArgs"
-  $PsExecArgs[3] = $AdminUserPassword
-
-  $proc = Start-Process -FilePath $PsExecPath -ArgumentList $PsExecArgs -Wait -PassThru
-  Write-Host 'Reading transcript...'
-  Get-Content -Path $TranscriptPath
-  Write-Host 'Cleaning up...'
-  Remove-Item -Recurse -Path $ExtractedPsToolsPath
-  Remove-Item -Recurse -Path $ExtractedPowerShellPath
-  exit $proc.ExitCode
-}
-
-$Workloads = @(
+$VisualStudioWorkloads = @(
   'Microsoft.VisualStudio.Component.VC.ASAN',
   'Microsoft.VisualStudio.Component.VC.CLI.Support',
   'Microsoft.VisualStudio.Component.VC.CMake.Project',
   'Microsoft.VisualStudio.Component.VC.CoreIde',
   'Microsoft.VisualStudio.Component.VC.Llvm.Clang',
-  'Microsoft.VisualStudio.Component.VC.Runtimes.ARM.Spectre',
-  'Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre',
-  'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
   'Microsoft.VisualStudio.Component.VC.Tools.ARM',
   'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
   'Microsoft.VisualStudio.Component.VC.Tools.ARM64EC',
   'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
-  'Microsoft.VisualStudio.Component.Windows11SDK.22000'
+  'Microsoft.VisualStudio.Component.Windows11SDK.22621'
 )
 
-$ReleaseInPath = 'Preview'
-$Sku = 'Enterprise'
-$VisualStudioBootstrapperUrl = 'https://aka.ms/vs/17/pre/vs_enterprise.exe'
-$PythonUrl = 'https://www.python.org/ftp/python/3.11.2/python-3.11.2-amd64.exe'
-
-$CudaUrl = 'https://developer.download.nvidia.com/compute/cuda/11.6.0/local_installers/cuda_11.6.0_511.23_windows.exe'
-
-$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
-
-<#
-.SYNOPSIS
-Writes a message to the screen depending on ExitCode.
-
-.DESCRIPTION
-Since msiexec can return either 0 or 3010 successfully, in both cases
-we write that installation succeeded, and which exit code it exited with.
-If msiexec returns anything else, we write an error.
-
-.PARAMETER ExitCode
-The exit code that msiexec returned.
-#>
-Function PrintMsiExitCodeMessage {
-  Param(
-    $ExitCode
-  )
-
-  # 3010 is probably ERROR_SUCCESS_REBOOT_REQUIRED
-  if ($ExitCode -eq 0 -or $ExitCode -eq 3010) {
-    Write-Host "Installation successful! Exited with $ExitCode."
-  }
-  else {
-    Write-Error "Installation failed! Exited with $ExitCode."
-  }
+$VisualStudioUrl = 'https://aka.ms/vs/17/pre/vs_enterprise.exe'
+$VisualStudioArgs = @('--quiet', '--norestart', '--wait', '--nocache')
+foreach ($workload in $VisualStudioWorkloads) {
+  $VisualStudioArgs += '--add'
+  $VisualStudioArgs += $workload
 }
 
+# https://github.com/PowerShell/PowerShell/releases/latest
+$PowerShellUrl = 'https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/PowerShell-7.4.5-win-x64.msi'
+$PowerShellArgs = @('/quiet', '/norestart')
+
+$PythonUrl = 'https://www.python.org/ftp/python/3.13.0/python-3.13.0-amd64.exe'
+$PythonArgs = @('/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'CompileAll=1', 'Include_doc=0')
+
+$CudaUrl = 'https://developer.download.nvidia.com/compute/cuda/12.4.0/local_installers/cuda_12.4.0_551.61_windows.exe'
+$CudaArgs = @('-s')
+
 <#
 .SYNOPSIS
-Install Visual Studio.
+Download and install a component.
 
 .DESCRIPTION
-InstallVisualStudio takes the $Workloads array, and installs it with the
-installer that's pointed at by $BootstrapperUrl.
+DownloadAndInstall downloads an executable from the given URL, and runs it with the given command-line arguments.
 
-.PARAMETER Workloads
-The set of VS workloads to install.
+.PARAMETER Name
+The name of the component, to be displayed in logging messages.
 
-.PARAMETER BootstrapperUrl
-The URL of the Visual Studio installer, i.e. one of vs_*.exe.
+.PARAMETER Url
+The URL of the installer.
 
-.PARAMETER InstallPath
-The path to install Visual Studio at.
-
-.PARAMETER Nickname
-The nickname to give the installation.
+.PARAMETER Args
+The command-line arguments to pass to the installer.
 #>
-Function InstallVisualStudio {
+Function DownloadAndInstall {
+  [CmdletBinding(PositionalBinding=$false)]
   Param(
-    [String[]]$Workloads,
-    [String]$BootstrapperUrl,
-    [String]$InstallPath = $null,
-    [String]$Nickname = $null
+    [Parameter(Mandatory)][String]$Name,
+    [Parameter(Mandatory)][String]$Url,
+    [Parameter(Mandatory)][String[]]$Args
   )
 
   try {
-    Write-Host 'Downloading Visual Studio...'
-    [string]$bootstrapperExe = Get-TempFilePath -Extension 'exe'
-    curl.exe -L -o $bootstrapperExe -s -S $BootstrapperUrl
-    Write-Host 'Installing Visual Studio...'
-    $args = @('/c', $bootstrapperExe, '--quiet', '--norestart', '--wait', '--nocache')
-    foreach ($workload in $Workloads) {
-      $args += '--add'
-      $args += $workload
-    }
-
-    if (-not ([String]::IsNullOrWhiteSpace($InstallPath))) {
-      $args += '--installpath'
-      $args += $InstallPath
-    }
-
-    if (-not ([String]::IsNullOrWhiteSpace($Nickname))) {
-      $args += '--nickname'
-      $args += $Nickname
-    }
-
-    $proc = Start-Process -FilePath cmd.exe -ArgumentList $args -Wait -PassThru
-    PrintMsiExitCodeMessage $proc.ExitCode
-  }
-  catch {
-    Write-Error "Failed to install Visual Studio! $($_.Exception.Message)"
-  }
-}
-
-<#
-.SYNOPSIS
-Installs Python.
-
-.DESCRIPTION
-InstallPython installs Python from the supplied URL.
-
-.PARAMETER Url
-The URL of the Python installer.
-#>
-Function InstallPython {
-  Param(
-    [String]$Url
-  )
-
-  Write-Host 'Downloading Python...'
-  [string]$installerPath = Get-TempFilePath -Extension 'exe'
-  curl.exe -L -o $installerPath -s -S $Url
-  Write-Host 'Installing Python...'
-  $proc = Start-Process -FilePath $installerPath -ArgumentList `
-  @('/passive', 'InstallAllUsers=1', 'PrependPath=1', 'CompileAll=1') -Wait -PassThru
-  $exitCode = $proc.ExitCode
-  if ($exitCode -eq 0) {
-    Write-Host 'Installation successful!'
-  }
-  else {
-    Write-Error "Installation failed! Exited with $exitCode."
-  }
-}
-
-<#
-.SYNOPSIS
-Installs NVIDIA's CUDA Toolkit.
-
-.DESCRIPTION
-InstallCuda installs the CUDA Toolkit.
-
-.PARAMETER Url
-The URL of the CUDA installer.
-#>
-Function InstallCuda {
-  Param(
-    [String]$Url
-  )
-
-  try {
-    Write-Host 'Downloading CUDA...'
-    [string]$installerPath = Get-TempFilePath -Extension 'exe'
+    Write-Host "Downloading $Name..."
+    $tempPath = 'D:\installerTemp'
+    mkdir $tempPath -Force | Out-Null
+    $fileName = [uri]::new($Url).Segments[-1]
+    $installerPath = Join-Path $tempPath $fileName
     curl.exe -L -o $installerPath -s -S $Url
-    Write-Host 'Installing CUDA...'
-    $proc = Start-Process -FilePath $installerPath -ArgumentList @('-s') -Wait -PassThru
+
+    Write-Host "Installing $Name..."
+    $proc = Start-Process -FilePath $installerPath -ArgumentList $Args -Wait -PassThru
     $exitCode = $proc.ExitCode
+
     if ($exitCode -eq 0) {
       Write-Host 'Installation successful!'
-    }
-    else {
+    } elseif ($exitCode -eq 3010) {
+      Write-Host 'Installation successful! Exited with 3010 (ERROR_SUCCESS_REBOOT_REQUIRED).'
+    } else {
       Write-Error "Installation failed! Exited with $exitCode."
     }
-  }
-  catch {
-    Write-Error "Failed to install CUDA! $($_.Exception.Message)"
-  }
-}
 
-<#
-.SYNOPSIS
-Install or upgrade a pip package.
-
-.DESCRIPTION
-Installs or upgrades a pip package specified in $Package.
-
-.PARAMETER Package
-The name of the package to be installed or upgraded.
-#>
-Function PipInstall {
-  Param(
-    [String]$Package
-  )
-
-  try {
-    Write-Host "Installing or upgrading $Package..."
-    python.exe -m pip install --progress-bar off --upgrade $Package
-    Write-Host "Done installing or upgrading $Package."
-  }
-  catch {
-    Write-Error "Failed to install or upgrade $Package."
+    Remove-Item -Path $installerPath
+  } catch {
+    Write-Error "Installation failed! Exception: $($_.Exception.Message)"
   }
 }
 
-Write-Host 'AdminUser password not supplied; assuming already running as AdminUser.'
+Write-Host "Old PowerShell version: $($PSVersionTable.PSVersion)"
 
 # Print the Windows version, so we can verify whether Patch Tuesday has been picked up.
-cmd /c ver
+# Skip a blank line to improve the output.
+(cmd /c ver)[1]
 
-Write-Host 'Configuring AntiVirus exclusions...'
-Add-MpPreference -ExclusionPath C:\agent
-Add-MpPreference -ExclusionPath D:\
-Add-MpPreference -ExclusionProcess ninja.exe
-Add-MpPreference -ExclusionProcess clang-cl.exe
-Add-MpPreference -ExclusionProcess cl.exe
-Add-MpPreference -ExclusionProcess link.exe
-Add-MpPreference -ExclusionProcess python.exe
+DownloadAndInstall -Name 'PowerShell'    -Url $PowerShellUrl   -Args $PowerShellArgs
+DownloadAndInstall -Name 'Python'        -Url $PythonUrl       -Args $PythonArgs
+DownloadAndInstall -Name 'Visual Studio' -Url $VisualStudioUrl -Args $VisualStudioArgs
+DownloadAndInstall -Name 'CUDA'          -Url $CudaUrl         -Args $CudaArgs
 
-InstallPython $PythonUrl
-InstallVisualStudio -Workloads $Workloads -BootstrapperUrl $VisualStudioBootstrapperUrl
-InstallCuda -Url $CudaUrl
-
-Write-Host 'Updating PATH...'
-
-# Step 1: Read the system path, which was just updated by installing Python.
-$currentSystemPath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-
-# Step 2: Update the local path (for this running script), so PipInstall can run python.exe.
-# Additional directories can be added here (e.g. if we extracted a zip file
-# or installed something that didn't update the system path).
-$Env:PATH="$($currentSystemPath)"
-
-# Step 3: Update the system path, permanently recording any additional directories that were added in the previous step.
-[Environment]::SetEnvironmentVariable('Path', "$Env:PATH", 'Machine')
-
-Write-Host 'Finished updating PATH!'
-
-Write-Host 'Running PipInstall...'
-
-PipInstall pip
-PipInstall psutil
-
-Write-Host 'Finished running PipInstall!'
-
-Write-Host 'Setting other environment variables...'
+Write-Host 'Setting environment variables...'
 
 # The STL's PR/CI builds are totally unrepresentative of customer usage.
 [Environment]::SetEnvironmentVariable('VSCMD_SKIP_SENDTELEMETRY', '1', 'Machine')
 
-Write-Host 'Finished setting other environment variables!'
+# Tell create-1es-hosted-pool.ps1 that we succeeded.
+Write-Host 'PROVISION_IMAGE_SUCCEEDED'
 
-Write-Host 'Done!'
+exit

@@ -131,8 +131,7 @@ struct instantiator {
             assert(!ranges::is_permutation(r1, r2));
             assert(!ranges::is_permutation(r1, r2, {}, {}, [](int n) { return n - 1; }));
             assert(ranges::is_permutation(r1, r2, {}, {}, [](int n) { return n - 2; }));
-            assert(ranges::is_permutation(
-                r1, r2, {}, [](int n) { return n + 1; }, [](int n) { return n - 1; }));
+            assert(ranges::is_permutation(r1, r2, {}, [](int n) { return n + 1; }, [](int n) { return n - 1; }));
         }
         { // Test GH-2888: `<algorithm>`: `ranges::is_permutation`'s helper lambda does not specify return type
             struct NonCopyableBool {
@@ -197,7 +196,7 @@ constexpr bool run_tests() {
 }
 
 int main() {
-    STATIC_ASSERT(run_tests());
+    static_assert(run_tests());
     run_tests();
 }
 #endif // TEST_EVERYTHING

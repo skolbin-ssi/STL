@@ -20,9 +20,9 @@ concept CanSize = requires(R& r) { ranges::size(r); };
 
 template <class R>
 concept CanTakeDrop = requires(R r) {
-                          forward<R>(r) | views::take(1);
-                          forward<R>(r) | views::drop(1);
-                      };
+    forward<R>(r) | views::take(1);
+    forward<R>(r) | views::drop(1);
+};
 
 struct non_default {
     int value{};
@@ -191,8 +191,8 @@ constexpr void test_common(T val, B bound = unreachable_sentinel) {
     assert(second >= first);
     static_assert(noexcept(first >= second)); // strengthened
 
-    assert(first <=> second < 0);
-    assert(second <=> first > 0);
+    assert((first <=> second) < 0);
+    assert((second <=> first) > 0);
     static_assert(noexcept(first <=> second)); // strengthened
 
     {
@@ -252,6 +252,16 @@ constexpr void test_common(T val, B bound = unreachable_sentinel) {
         assert(cmp_equal(last - first, rng.size()));
         static_assert(noexcept(last - first)); // strengthened
     }
+
+    const same_as<ranges::const_iterator_t<R>> auto cfirst = rng.cbegin();
+    assert(cfirst == first);
+    const same_as<ranges::const_sentinel_t<R>> auto clast = rng.cend();
+    if constexpr (ranges::common_range<R>) {
+        assert(clast == last);
+        assert(cmp_equal(clast - cfirst, rng.size()));
+    } else {
+        static_assert(same_as<remove_const_t<decltype(clast)>, unreachable_sentinel_t>);
+    }
 }
 
 struct move_tester {
@@ -274,18 +284,25 @@ struct forward_tester {
 };
 
 struct tuple_tester {
+#ifdef __EDG__ // TRANSITION, VSO-1898933
+    template <class Arg1, class Arg2>
+    constexpr tuple_tester(Arg1&& arg1, Arg2&& arg2) : y(forward<Arg1>(arg1)), z(forward<Arg2>(arg2)) {}
+#endif // ^^^ workaround ^^^
     forward_tester y;
     forward_tester z;
-
-#ifdef __clang__ // TRANSITION, Clang needs to implement P0960R3
-#ifdef __cpp_aggregate_paren_init
-#error Remove this workaround
-#else // ^^^ Workaround is useless / workaround is useful vvv
-    template <class T, class U>
-    constexpr tuple_tester(T&& a, U&& b) : y{forward<T>(a)}, z{forward<U>(b)} {}
-#endif // __cpp_aggregate_paren_init
-#endif // __clang__
 };
+
+
+template <class IntLike>
+constexpr void test_iterator_arithmetic() {
+    auto rv    = views::repeat(0, IntLike{20u});
+    auto first = rv.begin();
+    auto last  = rv.end();
+    assert(last - first == 20);
+    first += 2;
+    last -= 3;
+    assert(last - first == 15);
+}
 
 constexpr bool test() {
     using namespace string_literals;
@@ -322,17 +339,48 @@ constexpr bool test() {
         assert(to_copy.x == 1);
         assert(to_move.x == 2);
     }
+
+    // GH-4251: <ranges>: repeat_view<T, unsigned int> emits truncation warnings
+    test_iterator_arithmetic<unsigned char>();
+    test_iterator_arithmetic<unsigned short>();
+    test_iterator_arithmetic<unsigned int>();
+    test_iterator_arithmetic<unsigned long>();
+    test_iterator_arithmetic<unsigned long long>();
+    test_iterator_arithmetic<signed char>();
+    test_iterator_arithmetic<short>();
+    test_iterator_arithmetic<int>();
+    test_iterator_arithmetic<long>();
+    test_iterator_arithmetic<long long>();
+    test_iterator_arithmetic<char>();
+#ifdef __cpp_char8_t
+    test_iterator_arithmetic<char8_t>();
+#endif // defined(__cpp_char8_t)
+    test_iterator_arithmetic<char16_t>();
+    test_iterator_arithmetic<char32_t>();
+    test_iterator_arithmetic<wchar_t>();
+    test_iterator_arithmetic<_Signed128>();
+
     return true;
 }
 
-// Check LWG-3875
+// Check LWG-3875 "std::ranges::repeat_view<T, IntegerClass>::iterator may be ill-formed"
 static_assert(CanViewRepeat<string, long long>);
 static_assert(CanViewRepeat<string, unsigned long long>);
 static_assert(CanViewRepeat<string, _Signed128>);
 static_assert(
     !CanViewRepeat<string, _Unsigned128>); // _Unsigned128 does not satisfy 'integer-like-with-usable-difference-type'
 
-// Check GH-3392
+// Check LWG-4053 "Unary call to std::views::repeat does not decay the argument" (affects CTAD only due to LWG-4054)
+static_assert(is_same_v<decltype(ranges::repeat_view(ranges::repeat_view(42))), ranges::repeat_view<int>>);
+static_assert(is_same_v<decltype(ranges::repeat_view("Hello world!")), ranges::repeat_view<const char*>>);
+static_assert(is_same_v<decltype(ranges::repeat_view(test)), ranges::repeat_view<bool (*)()>>);
+
+// Check LWG-4054 "Repeating a repeat_view should repeat the view"
+static_assert(is_same_v<decltype(views::repeat(views::repeat(42))), ranges::repeat_view<ranges::repeat_view<int>>>);
+static_assert(is_same_v<decltype(views::repeat("Hello world!")), ranges::repeat_view<const char*>>);
+static_assert(is_same_v<decltype(views::repeat(test)), ranges::repeat_view<bool (*)()>>);
+
+// Check GH-3392 "<ranges>: views::repeat(...) | views::take(...) is not always a valid range"
 static_assert(ranges::range<decltype(views::repeat('3', 100ull) | views::take(3))>);
 static_assert(ranges::range<decltype(views::repeat('3', 100ull) | views::drop(3))>);
 

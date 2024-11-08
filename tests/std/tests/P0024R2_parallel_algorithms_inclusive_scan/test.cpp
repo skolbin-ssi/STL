@@ -135,7 +135,8 @@ struct intermediateType {
     intermediateType() = delete;
     explicit intermediateType(int) {} // so that the test can make one of these
     explicit intermediateType(inputType&) {} // Intermediate tmp(*first)
-    explicit intermediateType(bopResult&&) {} // Intermediate tmp(binary_op((one of tmp, move(tmp), *first), *first))
+    // Intermediate tmp = binary_op((one of tmp, move(tmp), *first), *first);
+    /* implicit */ intermediateType(bopResult&&) {}
     intermediateType(const intermediateType&)            = delete;
     intermediateType(intermediateType&&)                 = default; // tmp = move(tmp)
     intermediateType& operator=(const intermediateType&) = delete;
@@ -192,11 +193,6 @@ struct typesBop {
     bopResult operator()(intermediateType&&, intermediateType&&) {
         return 0;
     }
-
-    // *result = binary_op(tmp, move(*result))
-    bopResult operator()(intermediateType&, outputType&&) {
-        return 0;
-    }
 };
 
 void test_case_inclusive_scan_init_writes_intermediate_type() {
@@ -207,7 +203,6 @@ void test_case_inclusive_scan_init_writes_intermediate_type() {
 }
 
 int main() {
-#ifndef _M_CEE // TRANSITION, VSO-1659695
     mt19937 gen(1729);
 
     parallel_test_case(test_case_inclusive_scan_parallel, gen);
@@ -218,5 +213,4 @@ int main() {
     parallel_test_case(test_case_inclusive_scan_bop_init_parallel_associative);
     parallel_test_case(test_case_inclusive_scan_bop_init_parallel_associative_in_place);
     test_case_inclusive_scan_init_writes_intermediate_type();
-#endif // _M_CEE
 }

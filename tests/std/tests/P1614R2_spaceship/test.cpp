@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
+
 #include <array>
 #include <cassert>
 #include <charconv>
@@ -170,16 +172,16 @@ constexpr bool spaceship_test(const SmallType& smaller, const EqualType& smaller
 }
 
 template <class T>
-inline constexpr bool has_synth_ordered = false;
+constexpr bool has_synth_ordered = false;
 template <class V>
-inline constexpr bool has_synth_ordered<std::pair<const SynthOrdered, V>> = true;
+constexpr bool has_synth_ordered<std::pair<const SynthOrdered, V>> = true;
 template <>
 inline constexpr bool has_synth_ordered<SynthOrdered> = true;
 
 template <class Container>
 constexpr void ordered_containers_test(
     const Container& smaller, const Container& smaller_equal, const Container& larger) {
-    using Elem = typename Container::value_type;
+    using Elem = Container::value_type;
 
     if constexpr (has_synth_ordered<Elem>) {
         spaceship_test<std::weak_ordering>(smaller, smaller_equal, larger);
@@ -1021,6 +1023,18 @@ void ordering_test_cases() {
         spaceship_test<std::strong_ordering>(p1, p3, p5);
         spaceship_test<std::strong_ordering>(p1, nullptr, p4);
     }
+    { // shared_ptr, heterogeneous
+        std::shared_ptr<const int> p1{};
+        std::shared_ptr<void> p2{};
+        std::shared_ptr<volatile int> p3{};
+
+        std::shared_ptr<int> p4{new int};
+
+        spaceship_test<std::strong_ordering>(p1, p2, p4);
+        spaceship_test<std::strong_ordering>(p1, p3, p4);
+        spaceship_test<std::strong_ordering>(p2, p3, p4);
+        spaceship_test<std::strong_ordering>(p1, nullptr, p4);
+    }
     { // slice
         std::slice a1(2, 3, 4);
         std::slice a2(2, 3, 4);
@@ -1047,9 +1061,9 @@ void ordering_test_cases() {
         spaceship_test<std::partial_ordering>(double_seconds{1}, float_milliseconds{1000}, ntsc_fields{60});
 
         constexpr double_seconds nan_s{std::numeric_limits<double>::quiet_NaN()};
-#ifdef __clang__ // TRANSITION, DevCom-445462
+#if defined(__clang__) || defined(__EDG__) // TRANSITION, DevCom-445462
         static_assert(nan_s <=> nan_s == std::partial_ordering::unordered);
-#endif // defined(__clang__)
+#endif // ^^^ no workaround ^^^
         assert(nan_s <=> nan_s == std::partial_ordering::unordered);
     }
     { // chrono::time_point
@@ -1063,9 +1077,9 @@ void ordering_test_cases() {
         spaceship_test<std::partial_ordering>(sys_tp{}, sys_double_s{}, sys_double_s{double_seconds{1}});
 
         constexpr sys_double_s nan_tp{double_seconds{std::numeric_limits<double>::quiet_NaN()}};
-#ifdef __clang__ // TRANSITION, DevCom-445462
+#if defined(__clang__) || defined(__EDG__) // TRANSITION, DevCom-445462
         static_assert(nan_tp <=> nan_tp == std::partial_ordering::unordered);
-#endif // defined(__clang__)
+#endif // ^^^ no workaround ^^^
         assert(nan_tp <=> nan_tp == std::partial_ordering::unordered);
 
         using steady_tp = std::chrono::steady_clock::time_point;

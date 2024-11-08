@@ -3,7 +3,6 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _CSTDIO_
 #define _CSTDIO_
 #include <yvals_core.h>
@@ -26,9 +25,6 @@ _STL_DISABLE_CLANG_WARNINGS
 #undef getchar
 #undef putc
 #undef putchar
-
-// TRANSITION: Boost nonconformingly uses this macro
-#define _FPOSOFF(fp) (static_cast<long long>(fp))
 
 _STD_BEGIN
 #pragma warning(push)

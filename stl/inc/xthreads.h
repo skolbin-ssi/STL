@@ -3,11 +3,11 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _THR_XTHREADS_H
 #define _THR_XTHREADS_H
 #include <yvals_core.h>
 #if _STL_COMPILER_PREPROCESSOR
+#include <__msvc_threads_core.hpp>
 #include <climits>
 #include <xtimec.h>
 
@@ -18,59 +18,14 @@ _STL_DISABLE_CLANG_WARNINGS
 #pragma push_macro("new")
 #undef new
 
-_EXTERN_C
-using _Thrd_id_t = unsigned int;
-struct _Thrd_t { // thread identifier for Win32
-    void* _Hnd; // Win32 HANDLE
-    _Thrd_id_t _Id;
-};
-
-// Size and alignment for _Mtx_internal_imp_t and _Cnd_internal_imp_t
-#ifdef _CRT_WINDOWS
-#ifdef _WIN64
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_size      = 32;
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_alignment = 8;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_size      = 16;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_alignment = 8;
-#else // _WIN64
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_size      = 20;
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_alignment = 4;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_size      = 8;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_alignment = 4;
-#endif // _WIN64
-#else // _CRT_WINDOWS
-#ifdef _WIN64
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_size      = 80;
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_alignment = 8;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_size      = 72;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_alignment = 8;
-#else // _WIN64
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_size      = 48;
-_INLINE_VAR constexpr size_t _Mtx_internal_imp_alignment = 4;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_size      = 40;
-_INLINE_VAR constexpr size_t _Cnd_internal_imp_alignment = 4;
-#endif // _WIN64
-#endif // _CRT_WINDOWS
-
-#ifdef _M_CEE // avoid warning LNK4248: unresolved typeref token for '_Mtx_internal_imp_t'; image may not run
-using _Mtx_t = void*;
-using _Cnd_t = void*;
-#else // ^^^ defined(_M_CEE) / !defined(_M_CEE) vvv
-struct _Mtx_internal_imp_t;
-struct _Cnd_internal_imp_t;
-using _Mtx_t = _Mtx_internal_imp_t*;
-using _Cnd_t = _Cnd_internal_imp_t*;
-#endif // ^^^ !defined(_M_CEE) ^^^
-
-enum { _Thrd_success, _Thrd_nomem, _Thrd_timedout, _Thrd_busy, _Thrd_error };
-
+extern "C" {
 // threads
-_CRTIMP2_PURE int __cdecl _Thrd_detach(_Thrd_t);
-_CRTIMP2_PURE int __cdecl _Thrd_join(_Thrd_t, int*);
-_CRTIMP2_PURE void __cdecl _Thrd_sleep(const xtime*);
-_CRTIMP2_PURE void __cdecl _Thrd_yield();
-_CRTIMP2_PURE unsigned int __cdecl _Thrd_hardware_concurrency();
-_CRTIMP2_PURE _Thrd_id_t __cdecl _Thrd_id();
+_CRTIMP2_PURE _Thrd_result __cdecl _Thrd_detach(_Thrd_t) noexcept;
+_CRTIMP2_PURE _Thrd_result __cdecl _Thrd_join(_Thrd_t, int*) noexcept;
+_CRTIMP2_PURE void __cdecl _Thrd_yield() noexcept;
+_CRTIMP2_PURE unsigned int __cdecl _Thrd_hardware_concurrency() noexcept;
+_CRTIMP2_PURE _Thrd_id_t __cdecl _Thrd_id() noexcept;
+void __stdcall _Thrd_sleep_for(unsigned long /*ms*/) noexcept;
 
 // mutexes
 enum { // mutex types
@@ -80,43 +35,36 @@ enum { // mutex types
     _Mtx_recursive = 0x100
 };
 
-_CRTIMP2_PURE int __cdecl _Mtx_init(_Mtx_t*, int);
-_CRTIMP2_PURE void __cdecl _Mtx_destroy(_Mtx_t);
-_CRTIMP2_PURE void __cdecl _Mtx_init_in_situ(_Mtx_t, int);
-_CRTIMP2_PURE void __cdecl _Mtx_destroy_in_situ(_Mtx_t);
-_CRTIMP2_PURE int __cdecl _Mtx_current_owns(_Mtx_t);
-_CRTIMP2_PURE int __cdecl _Mtx_lock(_Mtx_t);
-_CRTIMP2_PURE int __cdecl _Mtx_trylock(_Mtx_t);
-_CRTIMP2_PURE int __cdecl _Mtx_timedlock(_Mtx_t, const xtime*);
-_CRTIMP2_PURE int __cdecl _Mtx_unlock(_Mtx_t); // TRANSITION, ABI: always returns _Thrd_success
-
-_CRTIMP2_PURE void* __cdecl _Mtx_getconcrtcs(_Mtx_t);
-_CRTIMP2_PURE void __cdecl _Mtx_clear_owner(_Mtx_t);
-_CRTIMP2_PURE void __cdecl _Mtx_reset_owner(_Mtx_t);
+#if defined(_CRTBLD) || defined(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+_CRTIMP2_PURE void __cdecl _Mtx_init_in_situ(_Mtx_t, int) noexcept;
+#endif // ^^^ defined(_CRTBLD) || defined(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR) ^^^
+_CRTIMP2_PURE int __cdecl _Mtx_current_owns(_Mtx_t) noexcept;
+_CRTIMP2_PURE _Thrd_result __cdecl _Mtx_lock(_Mtx_t) noexcept;
+_CRTIMP2_PURE _Thrd_result __cdecl _Mtx_trylock(_Mtx_t) noexcept;
+_CRTIMP2_PURE _Thrd_result __cdecl _Mtx_unlock(_Mtx_t) noexcept; // TRANSITION, ABI: Always succeeds
 
 // shared mutex
 // these declarations must be in sync with those in sharedmutex.cpp
-using _Smtx_t = void*;
-void __cdecl _Smtx_lock_exclusive(_Smtx_t*);
-void __cdecl _Smtx_lock_shared(_Smtx_t*);
-int __cdecl _Smtx_try_lock_exclusive(_Smtx_t*);
-int __cdecl _Smtx_try_lock_shared(_Smtx_t*);
-void __cdecl _Smtx_unlock_exclusive(_Smtx_t*);
-void __cdecl _Smtx_unlock_shared(_Smtx_t*);
+void __cdecl _Smtx_lock_exclusive(_Smtx_t*) noexcept;
+void __cdecl _Smtx_lock_shared(_Smtx_t*) noexcept;
+int __cdecl _Smtx_try_lock_exclusive(_Smtx_t*) noexcept;
+int __cdecl _Smtx_try_lock_shared(_Smtx_t*) noexcept;
+void __cdecl _Smtx_unlock_exclusive(_Smtx_t*) noexcept;
+void __cdecl _Smtx_unlock_shared(_Smtx_t*) noexcept;
 
 // condition variables
-_CRTIMP2_PURE int __cdecl _Cnd_init(_Cnd_t*);
-_CRTIMP2_PURE void __cdecl _Cnd_destroy(_Cnd_t);
-_CRTIMP2_PURE void __cdecl _Cnd_init_in_situ(_Cnd_t);
-_CRTIMP2_PURE void __cdecl _Cnd_destroy_in_situ(_Cnd_t);
-_CRTIMP2_PURE int __cdecl _Cnd_wait(_Cnd_t, _Mtx_t); // TRANSITION, ABI: Always returns _Thrd_success
-_CRTIMP2_PURE int __cdecl _Cnd_timedwait(_Cnd_t, _Mtx_t, const xtime*);
-_CRTIMP2_PURE int __cdecl _Cnd_broadcast(_Cnd_t); // TRANSITION, ABI: Always returns _Thrd_success
-_CRTIMP2_PURE int __cdecl _Cnd_signal(_Cnd_t); // TRANSITION, ABI: Always returns _Thrd_success
-_CRTIMP2_PURE void __cdecl _Cnd_register_at_thread_exit(_Cnd_t, _Mtx_t, int*);
-_CRTIMP2_PURE void __cdecl _Cnd_unregister_at_thread_exit(_Mtx_t);
-_CRTIMP2_PURE void __cdecl _Cnd_do_broadcast_at_thread_exit();
-_END_EXTERN_C
+#ifdef _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR
+_CRTIMP2_PURE void __cdecl _Cnd_init_in_situ(_Cnd_t) noexcept;
+#endif // ^^^ defined(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR) ^^^
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_wait(_Cnd_t, _Mtx_t) noexcept; // TRANSITION, ABI: Always succeeds
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_broadcast(_Cnd_t) noexcept; // TRANSITION, ABI: Always succeeds
+_CRTIMP2_PURE _Thrd_result __cdecl _Cnd_signal(_Cnd_t) noexcept; // TRANSITION, ABI: Always succeeds
+_CRTIMP2_PURE void __cdecl _Cnd_register_at_thread_exit(_Cnd_t, _Mtx_t, int*) noexcept;
+_CRTIMP2_PURE void __cdecl _Cnd_unregister_at_thread_exit(_Mtx_t) noexcept;
+_CRTIMP2_PURE void __cdecl _Cnd_do_broadcast_at_thread_exit() noexcept;
+// '_unchecked' means it is not checked against the 'steady_clock', so may report timeout prematurely
+_Thrd_result __stdcall _Cnd_timedwait_for_unchecked(_Cnd_t, _Mtx_t, unsigned int) noexcept;
+} // extern "C"
 
 _STD_BEGIN
 enum { // constants for error codes
@@ -129,16 +77,7 @@ enum { // constants for error codes
     _RESOURCE_UNAVAILABLE_TRY_AGAIN
 };
 
-extern "C++" [[noreturn]] _CRTIMP2_PURE void __cdecl _Throw_C_error(int _Code);
 extern "C++" [[noreturn]] _CRTIMP2_PURE void __cdecl _Throw_Cpp_error(int _Code);
-
-inline int _Check_C_return(int _Res) { // throw exception on failure
-    if (_Res != _Thrd_success) {
-        _Throw_C_error(_Res);
-    }
-
-    return _Res;
-}
 _STD_END
 #pragma pop_macro("new")
 _STL_RESTORE_CLANG_WARNINGS

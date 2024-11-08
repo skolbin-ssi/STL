@@ -12,48 +12,45 @@
 using namespace std;
 
 template <class>
-inline constexpr void* must_be_countable = nullptr;
+constexpr void* must_be_countable = nullptr;
 
 template <input_or_output_iterator I>
     requires requires { typename counted_iterator<I>; }
-inline constexpr bool must_be_countable<I> = true;
+constexpr bool must_be_countable<I> = true;
 
 template <class... Is>
 concept Counted = (must_be_countable<Is> && ...);
 
-// clang-format off
 template <class I1, class I2>
-concept CountedCompare = Counted<I1, I2>
-    && requires(const counted_iterator<I1>& c1, const counted_iterator<I2>& c2) {
-        c1 == c2;
-        c1 != c2;
-        c1 < c2;
-        c1 > c2;
-        c1 <= c2;
-        c1 >= c2;
-        c1 <=> c2;
-        c1 - c2;
+concept CountedCompare = Counted<I1, I2> && requires(const counted_iterator<I1>& c1, const counted_iterator<I2>& c2) {
+    c1 == c2;
+    c1 != c2;
+    c1 < c2;
+    c1 > c2;
+    c1 <= c2;
+    c1 >= c2;
+    c1 <=> c2;
+    c1 - c2;
 
-        c2 == c1;
-        c2 != c1;
-        c2 < c1;
-        c2 > c1;
-        c2 <= c1;
-        c2 >= c1;
-        c2 <=> c1;
-        c2 - c1;
-    };
-// clang-format on
+    c2 == c1;
+    c2 != c1;
+    c2 < c1;
+    c2 > c1;
+    c2 <= c1;
+    c2 >= c1;
+    c2 <=> c1;
+    c2 - c1;
+};
 
 struct instantiator {
     template <input_or_output_iterator Iter>
     static constexpr void call() {
-        using ConstIter = typename Iter::Consterator;
+        using ConstIter = Iter::Consterator;
 
         int input[5] = {1, 2, 3, 4, 5};
         // [counted.iter.const]
         {
-            STATIC_ASSERT(default_initializable<counted_iterator<Iter>> == default_initializable<Iter>);
+            static_assert(default_initializable<counted_iterator<Iter>> == default_initializable<Iter>);
             if constexpr (default_initializable<Iter>) {
                 [[maybe_unused]] counted_iterator<Iter> defaultConstructed{};
             }
@@ -205,8 +202,8 @@ struct instantiator {
                 const same_as<iter_difference_t<Iter>> auto diff1 = counted_iterator<Iter>{} - counted_iterator<Iter>{};
                 assert(diff1 == 0);
             }
-            STATIC_ASSERT(CountedCompare<Iter, ConstIter> == common_with<Iter, ConstIter>);
-            STATIC_ASSERT(CountedCompare<ConstIter, Iter> == common_with<Iter, ConstIter>);
+            static_assert(CountedCompare<Iter, ConstIter> == common_with<Iter, ConstIter>);
+            static_assert(CountedCompare<ConstIter, Iter> == common_with<Iter, ConstIter>);
 
             if constexpr (common_with<Iter, ConstIter>) { // cross-type difference
                 counted_iterator<Iter> iter1{Iter{input + 1}, 2};
@@ -344,7 +341,7 @@ void test_P2259() {
 }
 
 int main() {
-    STATIC_ASSERT(with_writable_iterators<instantiator, int>::call());
+    static_assert(with_writable_iterators<instantiator, int>::call());
     with_writable_iterators<instantiator, int>::call();
 
     { // Validate unwrapping

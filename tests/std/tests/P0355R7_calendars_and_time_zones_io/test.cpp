@@ -90,8 +90,12 @@ void test_duration_output() {
     assert(test_duration_basic_out(duration<int, ratio<60 * 60 * 24>>{42}, "42d"));
 
     assert(test_duration_basic_out(duration<int, ratio<2>>{24}, "24[2]s"));
+    assert(test_duration_basic_out(duration<int, ratio<3, 1>>{24}, "24[3]s"));
+    assert(test_duration_basic_out(duration<int, ratio<3, 7>>{24}, "24[3/7]s"));
     assert(test_duration_basic_out(duration<int, ratio<1, 2>>{24}, "24[1/2]s"));
     assert(test_duration_basic_out(duration<int, ratio<22, 7>>{24}, "24[22/7]s"));
+    assert(test_duration_basic_out(duration<int, ratio<53, 101>>{24}, "24[53/101]s"));
+    assert(test_duration_basic_out(duration<int, ratio<201, 2147483647>>{24}, "24[201/2147483647]s"));
     assert(test_duration_basic_out(duration<int, LongRatio>{24}, "24[9223372036854775806/9223372036854775807]s"));
 
     assert(test_duration_basic_out(duration<double>{0.140625}, "0.140625s"));
@@ -119,8 +123,12 @@ void test_duration_output() {
     assert(test_duration_basic_out(duration<int, ratio<60 * 60 * 24>>{42}, L"42d"));
 
     assert(test_duration_basic_out(duration<int, ratio<2>>{24}, L"24[2]s"));
+    assert(test_duration_basic_out(duration<int, ratio<3, 1>>{24}, L"24[3]s"));
+    assert(test_duration_basic_out(duration<int, ratio<3, 7>>{24}, L"24[3/7]s"));
     assert(test_duration_basic_out(duration<int, ratio<1, 2>>{24}, L"24[1/2]s"));
     assert(test_duration_basic_out(duration<int, ratio<22, 7>>{24}, L"24[22/7]s"));
+    assert(test_duration_basic_out(duration<int, ratio<53, 101>>{24}, L"24[53/101]s"));
+    assert(test_duration_basic_out(duration<int, ratio<201, 2147483647>>{24}, L"24[201/2147483647]s"));
     assert(test_duration_basic_out(duration<int, LongRatio>{24}, L"24[9223372036854775806/9223372036854775807]s"));
 
     assert(test_duration_basic_out(duration<double>{0.140625}, L"0.140625s"));
@@ -914,9 +922,9 @@ tzdb copy_tzdb() {
     vector<time_zone> zones;
     vector<time_zone_link> links;
     transform(my_tzdb.zones.begin(), my_tzdb.zones.end(), back_inserter(zones),
-        [](const auto& tz) { return time_zone{tz.name()}; });
+        [](const auto& tz) { return time_zone{_Secret_time_zone_construct_tag{}, tz.name()}; });
     transform(my_tzdb.links.begin(), my_tzdb.links.end(), back_inserter(links), [](const auto& link) {
-        return time_zone_link{link.name(), link.target()};
+        return time_zone_link{_Secret_time_zone_link_construct_tag{}, link.name(), link.target()};
     });
 
     return {my_tzdb.version, move(zones), move(links), my_tzdb.leap_seconds, my_tzdb._All_ls_positive};

@@ -3,15 +3,16 @@
 
 // class locale basic member functions
 
+// This file is compiled into the import library (via locale0_implib.cpp => locale0.cpp).
+// MAJOR LIMITATIONS apply to what can be included here!
+// Before editing this file, read: /docs/import_library.md
+
+#undef _ENFORCE_ONLY_CORE_HEADERS // TRANSITION, <xfacet> should be a core header
+
 #include <crtdbg.h>
 #include <internal_shared.h>
 #include <xatomic.h>
 #include <xfacet>
-
-// This must be as small as possible, because its contents are
-// injected into the msvcprt.lib and msvcprtd.lib import libraries.
-// Do not include or define anything else here.
-// In particular, basic_string must not be included here.
 
 // This should probably go to a compiler section just after the locks - unfortunately we have per-appdomain
 // and per-process variables to initialize
@@ -29,7 +30,6 @@ struct _Fac_node { // node for lazy facet recording
         delete _Facptr->_Decref();
     }
 
-#ifdef _DEBUG
     void* operator new(size_t _Size) { // replace operator new
         void* _Ptr = _malloc_dbg(_Size > 0 ? _Size : 1, _CRT_BLOCK, __FILE__, __LINE__);
         if (!_Ptr) {
@@ -42,7 +42,6 @@ struct _Fac_node { // node for lazy facet recording
     void operator delete(void* _Ptr) noexcept { // replace operator delete
         _free_dbg(_Ptr, _CRT_BLOCK);
     }
-#endif // _DEBUG
 
     _Fac_node* _Next;
     _Facet_base* _Facptr;
@@ -64,9 +63,9 @@ __PURE_APPDOMAIN_GLOBAL const _Fac_tidy_reg_t _Fac_tidy_reg;
 
 #if defined(_M_CEE)
 void __CLRCALL_OR_CDECL _Facet_Register_m(_Facet_base* _This)
-#else // defined(_M_CEE)
+#else // ^^^ defined(_M_CEE) / !defined(_M_CEE) vvv
 void __CLRCALL_OR_CDECL _Facet_Register(_Facet_base* _This)
-#endif // defined(_M_CEE)
+#endif // ^^^ !defined(_M_CEE) ^^^
 { // queue up lazy facet for destruction
     _Fac_head = new _Fac_node(_Fac_head, _This);
 }
@@ -77,9 +76,9 @@ _STD_END
 #include <cstdlib>
 #include <locale>
 
-_EXTERN_C
+extern "C" {
 
-void __CLRCALL_OR_CDECL _Deletegloballocale(void* ptr) { // delete a global locale reference
+void __CLRCALL_OR_CDECL _Deletegloballocale(void* ptr) noexcept { // delete a global locale reference
     std::locale::_Locimp* locptr = *static_cast<std::locale::_Locimp**>(ptr);
     if (locptr != nullptr) {
         delete locptr->_Decref();
@@ -88,14 +87,14 @@ void __CLRCALL_OR_CDECL _Deletegloballocale(void* ptr) { // delete a global loca
 
 __PURE_APPDOMAIN_GLOBAL static std::locale::_Locimp* global_locale = nullptr; // pointer to current locale
 
-static void __CLRCALL_PURE_OR_CDECL tidy_global() { // delete static global locale reference
+static void __CLRCALL_PURE_OR_CDECL tidy_global() noexcept { // delete static global locale reference
     _BEGIN_LOCK(_LOCK_LOCALE) // prevent double delete
     _Deletegloballocale(&global_locale);
     global_locale = nullptr;
     _END_LOCK()
 }
 
-_END_EXTERN_C
+} // extern "C"
 
 _MRTIMP2 void __cdecl _Atexit(void(__cdecl*)());
 
@@ -126,15 +125,15 @@ __PURE_APPDOMAIN_GLOBAL locale::_Locimp* locale::_Locimp::_Clocptr = nullptr; //
 
 __PURE_APPDOMAIN_GLOBAL int locale::id::_Id_cnt = 0; // unique id counter for facets
 
-__PURE_APPDOMAIN_GLOBAL locale::id ctype<char>::id(0);
+__PURE_APPDOMAIN_GLOBAL locale::id ctype<char>::id{};
 
-__PURE_APPDOMAIN_GLOBAL locale::id ctype<wchar_t>::id(0);
+__PURE_APPDOMAIN_GLOBAL locale::id ctype<wchar_t>::id{};
 
-__PURE_APPDOMAIN_GLOBAL locale::id codecvt<wchar_t, char, mbstate_t>::id(0);
+__PURE_APPDOMAIN_GLOBAL locale::id codecvt<wchar_t, char, mbstate_t>::id{};
 
-__PURE_APPDOMAIN_GLOBAL locale::id ctype<unsigned short>::id(0);
+__PURE_APPDOMAIN_GLOBAL locale::id ctype<unsigned short>::id{};
 
-__PURE_APPDOMAIN_GLOBAL locale::id codecvt<unsigned short, char, mbstate_t>::id(0);
+__PURE_APPDOMAIN_GLOBAL locale::id codecvt<unsigned short, char, mbstate_t>::id{};
 
 _MRTIMP2_PURE const locale& __CLRCALL_PURE_OR_CDECL locale::classic() { // get reference to "C" locale
 #if !defined(_M_CEE_PURE)
@@ -158,7 +157,7 @@ _MRTIMP2_PURE const locale& __CLRCALL_PURE_OR_CDECL locale::classic() { // get r
 
 _MRTIMP2_PURE locale __CLRCALL_PURE_OR_CDECL locale::empty() { // make empty transparent locale
     _Init();
-    return locale{_Locimp::_New_Locimp(true)};
+    return locale{_Secret_locale_construct_tag{}, _Locimp::_New_Locimp(true)};
 }
 
 _MRTIMP2_PURE locale::_Locimp* __CLRCALL_PURE_OR_CDECL locale::_Init(bool _Do_incref) { // setup global and "C" locales
@@ -175,10 +174,10 @@ _MRTIMP2_PURE locale::_Locimp* __CLRCALL_PURE_OR_CDECL locale::_Init(bool _Do_in
 
         // set classic to match
         ptr->_Incref();
-        ::new (&classic_locale) locale{ptr};
+        ::new (&classic_locale) locale{_Secret_locale_construct_tag{}, ptr};
 #if defined(_M_CEE_PURE)
         locale::_Locimp::_Clocptr = ptr;
-#else // ^^^ _M_CEE_PURE / !_M_CEE_PURE vvv
+#else // ^^^ defined(_M_CEE_PURE) / !defined(_M_CEE_PURE) vvv
         const auto mem      = reinterpret_cast<volatile intptr_t*>(&locale::_Locimp::_Clocptr);
         const auto as_bytes = reinterpret_cast<intptr_t>(ptr);
         _Compiler_or_memory_barrier();

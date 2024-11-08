@@ -33,6 +33,19 @@ void test_raw_ptr() {
 
         assert(*int_ptr == 15);
     }
+    // LWG-3897 inout_ptr will not update raw pointer to null
+    {
+        const auto delete_nullify = [](int** ptr) {
+            delete *ptr;
+            *ptr = nullptr;
+        };
+
+        int* ptr_allocated = new int{};
+
+        delete_nullify(inout_ptr(ptr_allocated));
+
+        assert(ptr_allocated == nullptr);
+    }
 }
 
 void test_shared_ptr() {
@@ -76,8 +89,22 @@ void test_shared_ptr() {
         assert(*int_ptr == 32);
     }
 
+    // LWG-3734 Inconsistency in inout_ptr and out_ptr for empty case
+    {
+        const auto f = [](void** ptr) { *ptr = new int(42); };
+
+        {
+            auto temp_adaptor = out_ptr(int_ptr, deleter);
+            assert(int_ptr.get() == nullptr);
+            f(temp_adaptor);
+        }
+
+        assert(count == 2);
+        assert(*int_ptr == 42);
+    }
+
     int_ptr.reset();
-    assert(count == 2);
+    assert(count == 3);
 }
 
 template <class Ptr, class Pointer = void, class... Args>
@@ -119,6 +146,19 @@ void test_smart_ptr(Args&&... args) {
         assert(*int_ptr == 19);
     }
 
+    // LWG-3734 Inconsistency in inout_ptr and out_ptr for empty case
+    {
+        const auto f = [](void** ptr) { *ptr = new int(42); };
+
+        {
+            auto temp_adaptor = out_ptr<int*>(int_ptr);
+            assert(int_ptr.get() == nullptr);
+            f(temp_adaptor);
+        }
+
+        assert(*int_ptr == 42);
+    }
+
     // LWG-3594 inout_ptr - inconsistent release() in destructor
     {
         const auto f = [](int** ptr) {
@@ -140,6 +180,10 @@ struct resettable_ptr {
     unique_ptr<int> ptr;
 
     explicit resettable_ptr(int* p) : ptr(p) {}
+
+    void reset() {
+        ptr.reset();
+    }
 
     void reset(int* p, reset_tag) {
         ptr.reset(p);
@@ -163,6 +207,7 @@ struct constructible_ptr {
 
     unique_ptr<int> ptr;
 
+    constructible_ptr() = default;
     explicit constructible_ptr(int* p) : ptr(p) {}
     explicit constructible_ptr(int* p, reset_tag) : ptr(p) {}
 

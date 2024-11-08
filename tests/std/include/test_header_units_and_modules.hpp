@@ -204,6 +204,10 @@ void test_deque() {
 void test_exception() {
     using namespace std;
     puts("Testing <exception>.");
+
+    static_assert(is_class_v<exception>);
+    static_assert(is_class_v<bad_exception>);
+
     assert(uncaught_exceptions() == 0);
     const exception_ptr ep = current_exception();
     assert(!ep);
@@ -216,12 +220,14 @@ void test_execution() {
     assert(count(execution::par, begin(arr), end(arr), 0) == 4);
 }
 
+#if TEST_STANDARD >= 23
 void test_expected() {
     using namespace std;
     puts("Testing <expected>.");
     constexpr expected<double, int> test{unexpect, 42};
     assert(test.error() == 42);
 }
+#endif // TEST_STANDARD >= 23
 
 void test_filesystem() {
     using namespace std;
@@ -278,6 +284,20 @@ void test_future() {
     assert(f.get() == 1729);
 }
 
+#if TEST_STANDARD >= 23
+void test_generator() {
+    using namespace std;
+    puts("Testing <generator>.");
+    auto some_ints = [](int hi) -> generator<int> {
+        for (int i = 0; i < hi; ++i) {
+            co_yield i;
+        }
+    };
+    constexpr int bound = 42;
+    assert(ranges::equal(some_ints(bound), views::iota(0, bound)));
+}
+#endif // TEST_STANDARD >= 23
+
 void test_initializer_list() {
     using namespace std;
     puts("Testing <initializer_list>.");
@@ -331,7 +351,7 @@ void test_istream() {
 void test_iterator() {
     using namespace std;
     puts("Testing <iterator>.");
-    constexpr int arr[]{10, 20, 30, 40, 50};
+    static constexpr int arr[]{10, 20, 30, 40, 50};
     constexpr reverse_iterator<const int*> ri{end(arr)};
     assert(*ri == 50);
     assert(*next(ri) == 40);
@@ -389,6 +409,42 @@ void test_map() {
     assert(m[30] == 33);
 }
 
+#if TEST_STANDARD >= 23
+void test_mdspan() {
+    using namespace std;
+    puts("Testing <mdspan>.");
+
+    {
+        int arr[] = {10, 0, 0, 0, 20, 0, 0, 0, 30};
+        layout_right::mapping<extents<int, 3, 3>> mp;
+        assert(arr[mp(0, 0)] == 10);
+        assert(arr[mp(1, 1)] == 20);
+        assert(arr[mp(2, 2)] == 30);
+    }
+
+    {
+        array<int, 15> arr{//
+            50, 60, 70, 80, 90, //
+            51, 61, 71, 81, 91, //
+            52, 62, 72, 82, 92};
+
+        mdspan md{arr.data(), extents<size_t, 3, 5>{}};
+
+        static_assert(is_same_v<decltype(md), mdspan<int, extents<size_t, 3, 5>>>);
+
+        assert((md[array{0, 0}] == 50));
+        assert((md[array{0, 4}] == 90));
+        assert((md[array{1, 1}] == 61));
+        assert((md[array{2, 0}] == 52));
+        assert((md[array{2, 4}] == 92));
+
+        md[array{2, 4}] = 1729;
+
+        assert(arr.back() == 1729);
+    }
+}
+#endif // TEST_STANDARD >= 23
+
 void test_memory() {
     using namespace std;
     puts("Testing <memory>.");
@@ -433,6 +489,12 @@ void test_mutex() {
 void test_new() {
     using namespace std;
     puts("Testing <new>.");
+
+    static_assert(is_class_v<bad_alloc>);
+    static_assert(is_class_v<bad_array_new_length>);
+    static_assert(is_same_v<underlying_type_t<align_val_t>, size_t>);
+    static_assert(is_class_v<nothrow_t>);
+
     bool caught_bad_alloc = false;
 
     try {
@@ -492,6 +554,20 @@ void test_ostream() {
     assert(os.rdbuf() == nullptr);
 }
 
+#if TEST_STANDARD >= 23
+void test_print() {
+    using namespace std;
+    puts("Testing <print>.");
+    println("Hello, world!");
+    println();
+
+#ifdef _CPPRTTI
+    println(cout, "The answer to life, the universe, and everything: {}", 42);
+    println(cout);
+#endif // _CPPRTTI
+}
+#endif // TEST_STANDARD >= 23
+
 void test_queue() {
     using namespace std;
     puts("Testing <queue>.");
@@ -531,14 +607,42 @@ void test_random() {
     minstd_rand0 lcg;
     lcg.discard(9999);
     assert(lcg() == 1043618065); // N4868 [rand.predef]/1
+
+#ifndef _MSVC_INTERNAL_TESTING // TRANSITION, VSO-2226569
+    // Test coverage for GH-4899 "Standard Library Modules: uniform_real_distribution emits
+    // error C2512: 'std::_Unsigned128': no appropriate default constructor available":
+    const double val = generate_canonical<double, 53>(lcg);
+    assert(val >= 0.0);
+    assert(val < 1.0);
+#endif // ^^^ no workaround ^^^
 }
 
 void test_ranges() {
     using namespace std;
     puts("Testing <ranges>.");
-    constexpr int arr[]{11, 0, 22, 0, 33, 0, 44, 0, 55};
-    assert(ranges::distance(views::filter(arr, [](int x) { return x == 0; })) == 4);
-    static_assert(ranges::distance(views::filter(arr, [](int x) { return x != 0; })) == 5);
+
+    {
+        constexpr int arr[]{11, 0, 22, 0, 33, 0, 44, 0, 55};
+        assert(ranges::distance(views::filter(arr, [](int x) { return x == 0; })) == 4);
+        static_assert(ranges::distance(views::filter(arr, [](int x) { return x != 0; })) == 5);
+    }
+
+#if TEST_STANDARD >= 23
+    // Also test GH-4404 "unrecoverable error importing module 'std' with std::ranges::views::pairwise_transform"
+    {
+        constexpr array arr{10, 2, 30, 4, 50};
+
+        constexpr auto pairwise_plus = views::pairwise_transform(plus{});
+        const auto vec2              = ranges::to<vector>(arr | pairwise_plus);
+        const vector correct2{12, 32, 34, 54};
+        assert(vec2 == correct2);
+
+        constexpr auto triplewise_plus = views::adjacent_transform<3>([](int x, int y, int z) { return x + y + z; });
+        const auto vec3                = ranges::to<vector>(arr | triplewise_plus);
+        const vector correct3{42, 36, 84};
+        assert(vec3 == correct3);
+    }
+#endif // TEST_STANDARD >= 23
 }
 
 void test_ratio() {
@@ -651,16 +755,14 @@ constexpr bool impl_test_source_location() {
     using namespace std;
     const auto sl = source_location::current();
     assert(sl.line() == __LINE__ - 1);
-#ifdef _MSVC_INTERNAL_TESTING // TRANSITION, VS 2022 17.6 Preview 2
     assert(sl.column() == 38);
-#else // ^^^ no workaround / workaround vvv
-    assert(sl.column() == 1);
-#endif // ^^^ workaround ^^^
-#if defined(__clang__) || defined(__EDG__) // TRANSITION, DevCom-10199227 and LLVM-58951
-    assert(sl.function_name() == "impl_test_source_location"sv);
-#else // ^^^ workaround / no workaround vvv
+
+#ifdef __EDG__
+    assert(sl.function_name() == "bool impl_test_source_location()"sv);
+#else // ^^^ EDG / Other vvv
     assert(sl.function_name() == "bool __cdecl impl_test_source_location(void)"sv);
-#endif // TRANSITION, DevCom-10199227 and LLVM-58951
+#endif // ^^^ Other ^^^
+
     assert(string_view{sl.file_name()}.ends_with("test_header_units_and_modules.hpp"sv));
     return true;
 }
@@ -675,13 +777,14 @@ void test_source_location() {
 void test_span() {
     using namespace std;
     puts("Testing <span>.");
-    constexpr int arr[]{11, 22, 33, 44, 55};
+    static constexpr int arr[]{11, 22, 33, 44, 55};
     constexpr span<const int, 5> whole{arr};
     constexpr span<const int, 3> mid = whole.subspan<1, 3>();
     assert(mid[0] == 22 && mid[1] == 33 && mid[2] == 44);
     static_assert(mid[0] == 22 && mid[1] == 33 && mid[2] == 44);
 }
 
+#if TEST_STANDARD >= 23
 void test_spanstream() {
     using namespace std;
     puts("Testing <spanstream>.");
@@ -714,6 +817,7 @@ void test_spanstream() {
     s << 10 << 20 << 30;
     assert(equal(begin(s.span()), end(s.span()), begin(expected_val), end(expected_val)));
 }
+#endif // TEST_STANDARD >= 23
 
 void test_sstream() {
     using namespace std;
@@ -740,6 +844,7 @@ void test_stack() {
     assert(s.empty());
 }
 
+#if TEST_STANDARD >= 23
 __declspec(dllexport) void test_stacktrace() { // export test_stacktrace to have it named even without debug info
     using namespace std;
     puts("Testing <stacktrace>.");
@@ -755,6 +860,7 @@ __declspec(dllexport) void test_stacktrace() { // export test_stacktrace to have
 
     assert(desc == "test_stacktrace");
 }
+#endif // TEST_STANDARD >= 23
 
 void test_stdexcept() {
     using namespace std;
@@ -771,6 +877,14 @@ void test_stdexcept() {
 
     assert(caught_puppies);
 }
+
+#if TEST_STANDARD >= 23
+void test_stdfloat() {
+    using namespace std;
+    puts("Testing <stdfloat>.");
+    // `namespace std` is available, so we're done.
+}
+#endif // TEST_STANDARD >= 23
 
 void test_stop_token() {
     using namespace std;
@@ -920,11 +1034,18 @@ void test_typeindex() {
 void test_typeinfo() {
     using namespace std;
     puts("Testing <typeinfo>.");
+
+    static_assert(is_class_v<type_info>);
+    static_assert(is_class_v<bad_cast>);
+    static_assert(is_class_v<bad_typeid>);
+
     const type_info& t1 = typeid(int);
     const type_info& t2 = typeid(const int&);
     const type_info& t3 = typeid(double);
     assert(t1 == t2);
     assert(t1 != t3);
+
+    assert(typeid(double).name() == "double"sv); // also test DevCom-10349749
 }
 
 void test_unordered_map() {
@@ -1066,13 +1187,18 @@ void all_cpp_header_tests() {
     test_deque();
     test_exception();
     test_execution();
+#if TEST_STANDARD >= 23
     test_expected();
+#endif // TEST_STANDARD >= 23
     test_filesystem();
     test_format();
     test_forward_list();
     test_fstream();
     test_functional();
     test_future();
+#if TEST_STANDARD >= 23
+    test_generator();
+#endif // TEST_STANDARD >= 23
     test_initializer_list();
     test_iomanip();
     test_ios();
@@ -1085,6 +1211,9 @@ void all_cpp_header_tests() {
     test_list();
     test_locale();
     test_map();
+#if TEST_STANDARD >= 23
+    test_mdspan();
+#endif // TEST_STANDARD >= 23
     test_memory();
     test_memory_resource();
     test_mutex();
@@ -1093,6 +1222,9 @@ void all_cpp_header_tests() {
     test_numeric();
     test_optional();
     test_ostream();
+#if TEST_STANDARD >= 23
+    test_print();
+#endif // TEST_STANDARD >= 23
     test_queue();
     test_random();
     test_ranges();
@@ -1104,11 +1236,18 @@ void all_cpp_header_tests() {
     test_shared_mutex();
     test_source_location();
     test_span();
+#if TEST_STANDARD >= 23
     test_spanstream();
+#endif // TEST_STANDARD >= 23
     test_sstream();
     test_stack();
+#if TEST_STANDARD >= 23
     test_stacktrace();
+#endif // TEST_STANDARD >= 23
     test_stdexcept();
+#if TEST_STANDARD >= 23
+    test_stdfloat();
+#endif // TEST_STANDARD >= 23
     test_stop_token();
     test_streambuf();
     test_string();

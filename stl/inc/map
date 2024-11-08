@@ -3,7 +3,6 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _MAP_
 #define _MAP_
 #include <yvals_core.h>
@@ -75,6 +74,8 @@ class map : public _Tree<_Tmap_traits<_Kty, _Ty, _Pr, _Alloc, false>> {
 public:
     static_assert(!_ENFORCE_MATCHING_ALLOCATORS || is_same_v<pair<const _Kty, _Ty>, typename _Alloc::value_type>,
         _MISMATCHED_ALLOCATOR_MESSAGE("map<Key, Value, Compare, Allocator>", "pair<const Key, Value>"));
+    static_assert(is_object_v<_Kty>, "The C++ Standard forbids containers of non-object types "
+                                     "because of [container.requirements].");
 
     using _Mybase                = _Tree<_Tmap_traits<_Kty, _Ty, _Pr, _Alloc, false>>;
     using _Nodeptr               = typename _Mybase::_Nodeptr;
@@ -134,7 +135,7 @@ public:
         insert(_First, _Last);
     }
 
-#if _HAS_CXX23 && defined(__cpp_lib_concepts) // TRANSITION, GH-395
+#if _HAS_CXX23
     template <_Container_compatible_range<value_type> _Rng>
     map(from_range_t, _Rng&& _Range) : _Mybase(key_compare()) {
         this->_Insert_range_unchecked(_RANGES _Ubegin(_Range), _RANGES _Uend(_Range));
@@ -154,7 +155,7 @@ public:
     map(from_range_t, _Rng&& _Range, const allocator_type& _Al) : _Mybase(key_compare(), _Al) {
         this->_Insert_range_unchecked(_RANGES _Ubegin(_Range), _RANGES _Uend(_Range));
     }
-#endif // _HAS_CXX23 && defined(__cpp_lib_concepts)
+#endif // _HAS_CXX23
 
     map& operator=(const map& _Right) {
         _Mybase::operator=(_Right);
@@ -165,7 +166,7 @@ public:
 
     map(map&& _Right, const allocator_type& _Al) : _Mybase(_STD move(_Right), _Al) {}
 
-    map& operator=(map&& _Right) noexcept(_Alnode_traits::is_always_equal::value&& is_nothrow_move_assignable_v<_Pr>) {
+    map& operator=(map&& _Right) noexcept(_Alnode_traits::is_always_equal::value && is_nothrow_move_assignable_v<_Pr>) {
         _Mybase::operator=(_STD move(_Right));
         return *this;
     }
@@ -382,17 +383,17 @@ map(_Iter, _Iter, _Alloc) -> map<_Guide_key_t<_Iter>, _Guide_val_t<_Iter>, less<
 template <class _Kty, class _Ty, class _Alloc, enable_if_t<_Is_allocator<_Alloc>::value, int> = 0>
 map(initializer_list<pair<_Kty, _Ty>>, _Alloc) -> map<_Kty, _Ty, less<_Kty>, _Alloc>;
 
-#if _HAS_CXX23 && defined(__cpp_lib_concepts) // TRANSITION, GH-395
+#if _HAS_CXX23
 template <_RANGES input_range _Rng, class _Pr = less<_Range_key_type<_Rng>>,
-    class _Alloc = allocator<_Range_to_alloc_type<_Rng>>,
-    enable_if_t<conjunction_v<negation<_Is_allocator<_Pr>>, _Is_allocator<_Alloc>>, int> = 0>
-map(from_range_t, _Rng&&, _Pr = _Pr(), _Alloc = _Alloc())
-    -> map<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, _Pr, _Alloc>;
+    _Allocator_for_container _Alloc = allocator<_Range_to_alloc_type<_Rng>>>
+    requires (!_Allocator_for_container<_Pr>)
+map(from_range_t, _Rng&&, _Pr = _Pr(),
+    _Alloc = _Alloc()) -> map<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, _Pr, _Alloc>;
 
-template <_RANGES input_range _Rng, class _Alloc, enable_if_t<_Is_allocator<_Alloc>::value, int> = 0>
-map(from_range_t, _Rng&&, _Alloc)
-    -> map<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, less<_Range_key_type<_Rng>>, _Alloc>;
-#endif // _HAS_CXX23 && defined(__cpp_lib_concepts)
+template <_RANGES input_range _Rng, _Allocator_for_container _Alloc>
+map(from_range_t, _Rng&&,
+    _Alloc) -> map<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, less<_Range_key_type<_Rng>>, _Alloc>;
+#endif // _HAS_CXX23
 #endif // _HAS_CXX17
 
 _EXPORT_STD template <class _Kty, class _Ty, class _Pr, class _Alloc>
@@ -401,21 +402,19 @@ _NODISCARD bool operator==(const map<_Kty, _Ty, _Pr, _Alloc>& _Left, const map<_
         && _STD equal(_Left._Unchecked_begin(), _Left._Unchecked_end_iter(), _Right._Unchecked_begin());
 }
 
-#if !_HAS_CXX20
-template <class _Kty, class _Ty, class _Pr, class _Alloc>
-_NODISCARD bool operator!=(const map<_Kty, _Ty, _Pr, _Alloc>& _Left, const map<_Kty, _Ty, _Pr, _Alloc>& _Right) {
-    return !(_Left == _Right);
-}
-#endif // !_HAS_CXX20
-
-#ifdef __cpp_lib_concepts
+#if _HAS_CXX20
 _EXPORT_STD template <class _Kty, class _Ty, class _Pr, class _Alloc>
 _NODISCARD _Synth_three_way_result<pair<const _Kty, _Ty>> operator<=>(
     const map<_Kty, _Ty, _Pr, _Alloc>& _Left, const map<_Kty, _Ty, _Pr, _Alloc>& _Right) {
     return _STD lexicographical_compare_three_way(_Left._Unchecked_begin(), _Left._Unchecked_end_iter(),
         _Right._Unchecked_begin(), _Right._Unchecked_end_iter(), _Synth_three_way{});
 }
-#else // ^^^ defined(__cpp_lib_concepts) / !defined(__cpp_lib_concepts) vvv
+#else // ^^^ _HAS_CXX20 / !_HAS_CXX20 vvv
+template <class _Kty, class _Ty, class _Pr, class _Alloc>
+_NODISCARD bool operator!=(const map<_Kty, _Ty, _Pr, _Alloc>& _Left, const map<_Kty, _Ty, _Pr, _Alloc>& _Right) {
+    return !(_Left == _Right);
+}
+
 template <class _Kty, class _Ty, class _Pr, class _Alloc>
 _NODISCARD bool operator<(const map<_Kty, _Ty, _Pr, _Alloc>& _Left, const map<_Kty, _Ty, _Pr, _Alloc>& _Right) {
     return _STD lexicographical_compare(
@@ -436,18 +435,18 @@ template <class _Kty, class _Ty, class _Pr, class _Alloc>
 _NODISCARD bool operator>=(const map<_Kty, _Ty, _Pr, _Alloc>& _Left, const map<_Kty, _Ty, _Pr, _Alloc>& _Right) {
     return !(_Left < _Right);
 }
-#endif // ^^^ !defined(__cpp_lib_concepts) ^^^
+#endif // ^^^ !_HAS_CXX20 ^^^
 
 _EXPORT_STD template <class _Kty, class _Ty, class _Pr, class _Alloc>
-void swap(map<_Kty, _Ty, _Pr, _Alloc>& _Left, map<_Kty, _Ty, _Pr, _Alloc>& _Right) noexcept(
-    noexcept(_Left.swap(_Right))) {
+void swap(map<_Kty, _Ty, _Pr, _Alloc>& _Left, map<_Kty, _Ty, _Pr, _Alloc>& _Right)
+    noexcept(noexcept(_Left.swap(_Right))) {
     _Left.swap(_Right);
 }
 
 #if _HAS_CXX20
 _EXPORT_STD template <class _Kty, class _Ty, class _Keylt, class _Alloc, class _Pr>
-typename map<_Kty, _Ty, _Keylt, _Alloc>::size_type erase_if(map<_Kty, _Ty, _Keylt, _Alloc>& _Cont, _Pr _Pred) {
-    return _Erase_nodes_if(_Cont, _Pass_fn(_Pred));
+map<_Kty, _Ty, _Keylt, _Alloc>::size_type erase_if(map<_Kty, _Ty, _Keylt, _Alloc>& _Cont, _Pr _Pred) {
+    return _STD _Erase_nodes_if(_Cont, _STD _Pass_fn(_Pred));
 }
 #endif // _HAS_CXX20
 
@@ -457,6 +456,8 @@ class multimap : public _Tree<_Tmap_traits<_Kty, _Ty, _Pr, _Alloc, true>> {
 public:
     static_assert(!_ENFORCE_MATCHING_ALLOCATORS || is_same_v<pair<const _Kty, _Ty>, typename _Alloc::value_type>,
         _MISMATCHED_ALLOCATOR_MESSAGE("multimap<Key, Value, Compare, Allocator>", "pair<const Key, Value>"));
+    static_assert(is_object_v<_Kty>, "The C++ Standard forbids containers of non-object types "
+                                     "because of [container.requirements].");
 
     using _Mybase                = _Tree<_Tmap_traits<_Kty, _Ty, _Pr, _Alloc, true>>;
     using key_type               = _Kty;
@@ -512,7 +513,7 @@ public:
         insert(_First, _Last);
     }
 
-#if _HAS_CXX23 && defined(__cpp_lib_concepts) // TRANSITION, GH-395
+#if _HAS_CXX23
     template <_Container_compatible_range<value_type> _Rng>
     multimap(from_range_t, _Rng&& _Range) : _Mybase(key_compare()) {
         this->_Insert_range_unchecked(_RANGES _Ubegin(_Range), _RANGES _Uend(_Range));
@@ -532,7 +533,7 @@ public:
     multimap(from_range_t, _Rng&& _Range, const allocator_type& _Al) : _Mybase(key_compare(), _Al) {
         this->_Insert_range_unchecked(_RANGES _Ubegin(_Range), _RANGES _Uend(_Range));
     }
-#endif // _HAS_CXX23 && defined(__cpp_lib_concepts)
+#endif // _HAS_CXX23
 
     multimap& operator=(const multimap& _Right) {
         _Mybase::operator=(_Right);
@@ -543,8 +544,8 @@ public:
 
     multimap(multimap&& _Right, const allocator_type& _Al) : _Mybase(_STD move(_Right), _Al) {}
 
-    multimap& operator=(multimap&& _Right) noexcept(
-        _Alnode_traits::is_always_equal::value&& is_nothrow_move_assignable_v<_Pr>) {
+    multimap& operator=(multimap&& _Right)
+        noexcept(_Alnode_traits::is_always_equal::value && is_nothrow_move_assignable_v<_Pr>) {
         _Mybase::operator=(_STD move(_Right));
         return *this;
     }
@@ -600,8 +601,8 @@ public:
 #if _HAS_CXX17
 template <class _Iter, class _Pr = less<_Guide_key_t<_Iter>>, class _Alloc = allocator<_Guide_pair_t<_Iter>>,
     enable_if_t<conjunction_v<_Is_iterator<_Iter>, negation<_Is_allocator<_Pr>>, _Is_allocator<_Alloc>>, int> = 0>
-multimap(_Iter, _Iter, _Pr = _Pr(), _Alloc = _Alloc())
-    -> multimap<_Guide_key_t<_Iter>, _Guide_val_t<_Iter>, _Pr, _Alloc>;
+multimap(
+    _Iter, _Iter, _Pr = _Pr(), _Alloc = _Alloc()) -> multimap<_Guide_key_t<_Iter>, _Guide_val_t<_Iter>, _Pr, _Alloc>;
 
 template <class _Kty, class _Ty, class _Pr = less<_Kty>, class _Alloc = allocator<pair<const _Kty, _Ty>>,
     enable_if_t<conjunction_v<negation<_Is_allocator<_Pr>>, _Is_allocator<_Alloc>>, int> = 0>
@@ -613,17 +614,17 @@ multimap(_Iter, _Iter, _Alloc) -> multimap<_Guide_key_t<_Iter>, _Guide_val_t<_It
 template <class _Kty, class _Ty, class _Alloc, enable_if_t<_Is_allocator<_Alloc>::value, int> = 0>
 multimap(initializer_list<pair<_Kty, _Ty>>, _Alloc) -> multimap<_Kty, _Ty, less<_Kty>, _Alloc>;
 
-#if _HAS_CXX23 && defined(__cpp_lib_concepts) // TRANSITION, GH-395
+#if _HAS_CXX23
 template <_RANGES input_range _Rng, class _Pr = less<_Range_key_type<_Rng>>,
-    class _Alloc = allocator<_Range_to_alloc_type<_Rng>>,
-    enable_if_t<conjunction_v<negation<_Is_allocator<_Pr>>, _Is_allocator<_Alloc>>, int> = 0>
-multimap(from_range_t, _Rng&&, _Pr = _Pr(), _Alloc = _Alloc())
-    -> multimap<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, _Pr, _Alloc>;
+    _Allocator_for_container _Alloc = allocator<_Range_to_alloc_type<_Rng>>>
+    requires (!_Allocator_for_container<_Pr>)
+multimap(from_range_t, _Rng&&, _Pr = _Pr(),
+    _Alloc = _Alloc()) -> multimap<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, _Pr, _Alloc>;
 
-template <_RANGES input_range _Rng, class _Alloc, enable_if_t<_Is_allocator<_Alloc>::value, int> = 0>
-multimap(from_range_t, _Rng&&, _Alloc)
-    -> multimap<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, less<_Range_key_type<_Rng>>, _Alloc>;
-#endif // _HAS_CXX23 && defined(__cpp_lib_concepts)
+template <_RANGES input_range _Rng, _Allocator_for_container _Alloc>
+multimap(from_range_t, _Rng&&,
+    _Alloc) -> multimap<_Range_key_type<_Rng>, _Range_mapped_type<_Rng>, less<_Range_key_type<_Rng>>, _Alloc>;
+#endif // _HAS_CXX23
 #endif // _HAS_CXX17
 
 _EXPORT_STD template <class _Kty, class _Ty, class _Pr, class _Alloc>
@@ -633,22 +634,20 @@ _NODISCARD bool operator==(
         && _STD equal(_Left._Unchecked_begin(), _Left._Unchecked_end_iter(), _Right._Unchecked_begin());
 }
 
-#if !_HAS_CXX20
-template <class _Kty, class _Ty, class _Pr, class _Alloc>
-_NODISCARD bool operator!=(
-    const multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, const multimap<_Kty, _Ty, _Pr, _Alloc>& _Right) {
-    return !(_Left == _Right);
-}
-#endif // !_HAS_CXX20
-
-#ifdef __cpp_lib_concepts
+#if _HAS_CXX20
 _EXPORT_STD template <class _Kty, class _Ty, class _Pr, class _Alloc>
 _NODISCARD _Synth_three_way_result<pair<const _Kty, _Ty>> operator<=>(
     const multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, const multimap<_Kty, _Ty, _Pr, _Alloc>& _Right) {
     return _STD lexicographical_compare_three_way(_Left._Unchecked_begin(), _Left._Unchecked_end_iter(),
         _Right._Unchecked_begin(), _Right._Unchecked_end_iter(), _Synth_three_way{});
 }
-#else // ^^^ defined(__cpp_lib_concepts) / !defined(__cpp_lib_concepts) vvv
+#else // ^^^ _HAS_CXX20 / !_HAS_CXX20 vvv
+template <class _Kty, class _Ty, class _Pr, class _Alloc>
+_NODISCARD bool operator!=(
+    const multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, const multimap<_Kty, _Ty, _Pr, _Alloc>& _Right) {
+    return !(_Left == _Right);
+}
+
 template <class _Kty, class _Ty, class _Pr, class _Alloc>
 _NODISCARD bool operator<(
     const multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, const multimap<_Kty, _Ty, _Pr, _Alloc>& _Right) {
@@ -673,19 +672,18 @@ _NODISCARD bool operator>=(
     const multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, const multimap<_Kty, _Ty, _Pr, _Alloc>& _Right) {
     return !(_Left < _Right);
 }
-#endif // ^^^ !defined(__cpp_lib_concepts) ^^^
+#endif // ^^^ !_HAS_CXX20 ^^^
 
 _EXPORT_STD template <class _Kty, class _Ty, class _Pr, class _Alloc>
-void swap(multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, multimap<_Kty, _Ty, _Pr, _Alloc>& _Right) noexcept(
-    noexcept(_Left.swap(_Right))) {
+void swap(multimap<_Kty, _Ty, _Pr, _Alloc>& _Left, multimap<_Kty, _Ty, _Pr, _Alloc>& _Right)
+    noexcept(noexcept(_Left.swap(_Right))) {
     _Left.swap(_Right);
 }
 
 #if _HAS_CXX20
 _EXPORT_STD template <class _Kty, class _Ty, class _Keylt, class _Alloc, class _Pr>
-typename multimap<_Kty, _Ty, _Keylt, _Alloc>::size_type erase_if(
-    multimap<_Kty, _Ty, _Keylt, _Alloc>& _Cont, _Pr _Pred) {
-    return _Erase_nodes_if(_Cont, _Pass_fn(_Pred));
+multimap<_Kty, _Ty, _Keylt, _Alloc>::size_type erase_if(multimap<_Kty, _Ty, _Keylt, _Alloc>& _Cont, _Pr _Pred) {
+    return _STD _Erase_nodes_if(_Cont, _STD _Pass_fn(_Pred));
 }
 #endif // _HAS_CXX20
 

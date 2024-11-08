@@ -4,17 +4,19 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <cstddef>
 #include <ranges>
 #include <span>
 #include <utility>
+#include <vector>
 
 #include <range_algorithm_support.hpp>
 
 using namespace std;
 using P = pair<int, int>;
 // Validate dangling story
-STATIC_ASSERT(same_as<decltype(ranges::inplace_merge(borrowed<false>{}, nullptr_to<int>)), ranges::dangling>);
-STATIC_ASSERT(same_as<decltype(ranges::inplace_merge(borrowed<true>{}, nullptr_to<int>)), int*>);
+static_assert(same_as<decltype(ranges::inplace_merge(borrowed<false>{}, nullptr_to<int>)), ranges::dangling>);
+static_assert(same_as<decltype(ranges::inplace_merge(borrowed<true>{}, nullptr_to<int>)), int*>);
 
 struct instantiator {
     static constexpr P expected[] = {P{0, 1}, P{0, 5}, P{4, 2}, P{4, 6}, P{6, 7}, P{7, 3}, P{8, 4}, P{9, 8}, P{10, 9}};
@@ -55,6 +57,26 @@ struct instantiator {
         }
     }
 };
+
+// Test GH-4863: <algorithm>: ranges::inplace_merge doesn't seem to be able to utilize ranges::upper_bound
+void test_gh_4863() { // COMPILE-ONLY
+    {
+        vector<int> v;
+        auto cmp = [](int&, int&) { return false; };
+        ranges::sort(v, cmp);
+        ranges::inplace_merge(v, v.begin(), cmp);
+    }
+    {
+        struct S {
+            operator nullptr_t() {
+                return nullptr;
+            }
+        };
+        vector<int> v;
+        auto cmp = [](const nullptr_t&, const nullptr_t&) { return false; };
+        ranges::inplace_merge(v, v.begin(), cmp, [](int) { return S{}; });
+    }
+}
 
 int main() {
     test_bidi<instantiator, P>();

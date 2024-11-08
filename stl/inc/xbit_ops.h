@@ -3,13 +3,13 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _XBIT_OPS_H
 #define _XBIT_OPS_H
 #include <yvals_core.h>
 #if _STL_COMPILER_PREPROCESSOR
 
 #include <cstdint>
+
 #include _STL_INTRIN_HEADER
 
 #pragma pack(push, _CRT_PACKING)
@@ -30,19 +30,20 @@ _NODISCARD inline unsigned long _Floor_of_log_2(size_t _Value) noexcept { // ret
     _Result = 63;
 #else // ^^^ 64-bit / 32-bit vvv
     _Result = 31;
-#endif // 64 vs. 32-bit
+#endif // ^^^ 32-bit ^^^
 
     while ((size_t{1} << _Result) > _Value) {
         --_Result;
     }
-
-#else // ^^^ _M_CEE_PURE / !_M_CEE_PURE vvv
+#else // ^^^ defined(_M_CEE_PURE) / !defined(_M_CEE_PURE) vvv
 #ifdef _WIN64
+    // CodeQL [SM02313] _Result is always initialized: the code above guarantees that _Value is non-zero.
     _BitScanReverse64(&_Result, _Value);
 #else // ^^^ 64-bit / 32-bit vvv
+    // CodeQL [SM02313] _Result is always initialized: the code above guarantees that _Value is non-zero.
     _BitScanReverse(&_Result, _Value);
-#endif // 64 vs. 32-bit
-#endif // _M_CEE_PURE
+#endif // ^^^ 32-bit ^^^
+#endif // ^^^ !defined(_M_CEE_PURE) ^^^
 
     return _Result;
 }

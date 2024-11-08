@@ -43,7 +43,6 @@
 #define _M_X64
 #endif // defined(_M_ARM64EC)
 
-
 #pragma warning(pop)
 
 namespace {
@@ -59,7 +58,7 @@ namespace {
     }
 } // unnamed namespace
 
-_EXTERN_C
+extern "C" {
 [[nodiscard]] _CRT_SATELLITE_2 double __stdcall __std_smf_assoc_laguerre(
     const unsigned int _Pn, const unsigned int _Pm, const double _Px) noexcept {
     if (_STD isnan(_Px)) {
@@ -476,7 +475,7 @@ _EXTERN_C
 
     return _Boost_call([=] { return ::boost::math::sph_neumann(_Pn, _Px); });
 }
-_END_EXTERN_C
+} // extern "C"
 
 namespace {
     template <class _Ty>
@@ -511,7 +510,7 @@ namespace {
     }
 } // unnamed namespace
 
-_EXTERN_C
+extern "C" {
 [[nodiscard]] _CRT_SATELLITE_2 double __stdcall __std_smf_hypot3(
     const double _Dx, const double _Dy, const double _Dz) noexcept {
     return _Hypot3(_Dx, _Dy, _Dz);
@@ -521,4 +520,4 @@ _EXTERN_C
     const float _Dx, const float _Dy, const float _Dz) noexcept {
     return _Hypot3(_Dx, _Dy, _Dz);
 }
-_END_EXTERN_C
+} // extern "C"

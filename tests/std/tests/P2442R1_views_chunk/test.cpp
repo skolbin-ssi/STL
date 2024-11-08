@@ -6,6 +6,8 @@
 #include <forward_list>
 #include <ranges>
 #include <span>
+#include <sstream>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -29,72 +31,72 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
     using V = views::all_t<Rng>;
     using R = chunk_view<V>;
 
-    STATIC_ASSERT(ranges::view<R>);
-    STATIC_ASSERT(forward_range<R> == forward_range<Rng>);
-    STATIC_ASSERT(bidirectional_range<R> == bidirectional_range<Rng>);
-    STATIC_ASSERT(random_access_range<R> == random_access_range<Rng>);
+    static_assert(ranges::view<R>);
+    static_assert(forward_range<R> == forward_range<Rng>);
+    static_assert(bidirectional_range<R> == bidirectional_range<Rng>);
+    static_assert(random_access_range<R> == random_access_range<Rng>);
 
     // Validate non-default-initializability
-    STATIC_ASSERT(!is_default_constructible_v<R>);
+    static_assert(!is_default_constructible_v<R>);
 
     // Validate borrowed_range
-    STATIC_ASSERT(ranges::borrowed_range<R> == (ranges::borrowed_range<V> && forward_range<V>) );
+    static_assert(ranges::borrowed_range<R> == (ranges::borrowed_range<V> && forward_range<V>) );
 
     // Validate range adaptor object and range adaptor closure
     constexpr auto closure = views::chunk(2);
 
     // ... with lvalue argument
-    STATIC_ASSERT(CanViewChunk<Rng&> == (!is_view || copy_constructible<V>) );
+    static_assert(CanViewChunk<Rng&> == (!is_view || copy_constructible<V>) );
     if constexpr (CanViewChunk<Rng&>) {
         constexpr bool is_noexcept = !is_view || is_nothrow_copy_constructible_v<V>;
 
-        STATIC_ASSERT(same_as<decltype(views::chunk(rng, 2)), R>);
-        STATIC_ASSERT(noexcept(views::chunk(rng, 2)) == is_noexcept);
+        static_assert(same_as<decltype(views::chunk(rng, 2)), R>);
+        static_assert(noexcept(views::chunk(rng, 2)) == is_noexcept);
 
-        STATIC_ASSERT(same_as<decltype(rng | closure), R>);
-        STATIC_ASSERT(noexcept(rng | closure) == is_noexcept);
+        static_assert(same_as<decltype(rng | closure), R>);
+        static_assert(noexcept(rng | closure) == is_noexcept);
     }
 
     // ... with const lvalue argument
-    STATIC_ASSERT(CanViewChunk<const remove_reference_t<Rng>&> == (!is_view || copy_constructible<V>) );
+    static_assert(CanViewChunk<const remove_reference_t<Rng>&> == (!is_view || copy_constructible<V>) );
     if constexpr (CanViewChunk<const remove_reference_t<Rng>&>) {
         using RC                   = chunk_view<views::all_t<const remove_reference_t<Rng>&>>;
         constexpr bool is_noexcept = !is_view || is_nothrow_copy_constructible_v<V>;
 
-        STATIC_ASSERT(!is_default_constructible_v<RC>);
+        static_assert(!is_default_constructible_v<RC>);
 
-        STATIC_ASSERT(same_as<decltype(views::chunk(as_const(rng), 2)), RC>);
-        STATIC_ASSERT(noexcept(views::chunk(as_const(rng), 2)) == is_noexcept);
+        static_assert(same_as<decltype(views::chunk(as_const(rng), 2)), RC>);
+        static_assert(noexcept(views::chunk(as_const(rng), 2)) == is_noexcept);
 
-        STATIC_ASSERT(same_as<decltype(as_const(rng) | closure), RC>);
-        STATIC_ASSERT(noexcept(as_const(rng) | closure) == is_noexcept);
+        static_assert(same_as<decltype(as_const(rng) | closure), RC>);
+        static_assert(noexcept(as_const(rng) | closure) == is_noexcept);
     }
 
     // ... with rvalue argument
-    STATIC_ASSERT(CanViewChunk<remove_reference_t<Rng>> == (is_view || movable<remove_reference_t<Rng>>) );
+    static_assert(CanViewChunk<remove_reference_t<Rng>> == (is_view || movable<remove_reference_t<Rng>>) );
     if constexpr (CanViewChunk<remove_reference_t<Rng>>) {
         using RS                   = chunk_view<views::all_t<remove_reference_t<Rng>>>;
         constexpr bool is_noexcept = is_nothrow_move_constructible_v<V>;
 
-        STATIC_ASSERT(!is_default_constructible_v<RS>);
+        static_assert(!is_default_constructible_v<RS>);
 
-        STATIC_ASSERT(same_as<decltype(views::chunk(move(rng), 2)), RS>);
-        STATIC_ASSERT(noexcept(views::chunk(move(rng), 2)) == is_noexcept);
+        static_assert(same_as<decltype(views::chunk(move(rng), 2)), RS>);
+        static_assert(noexcept(views::chunk(move(rng), 2)) == is_noexcept);
 
-        STATIC_ASSERT(same_as<decltype(move(rng) | closure), RS>);
-        STATIC_ASSERT(noexcept(move(rng) | closure) == is_noexcept);
+        static_assert(same_as<decltype(move(rng) | closure), RS>);
+        static_assert(noexcept(move(rng) | closure) == is_noexcept);
     }
 
     // ... with const rvalue argument
-    STATIC_ASSERT(CanViewChunk<const remove_reference_t<Rng>> == (is_view && copy_constructible<V>) );
+    static_assert(CanViewChunk<const remove_reference_t<Rng>> == (is_view && copy_constructible<V>) );
     if constexpr (CanViewChunk<const remove_reference_t<Rng>>) {
         constexpr bool is_noexcept = is_nothrow_copy_constructible_v<V>;
 
-        STATIC_ASSERT(same_as<decltype(views::chunk(move(as_const(rng)), 2)), R>);
-        STATIC_ASSERT(noexcept(views::chunk(move(as_const(rng)), 2)) == is_noexcept);
+        static_assert(same_as<decltype(views::chunk(move(as_const(rng)), 2)), R>);
+        static_assert(noexcept(views::chunk(move(as_const(rng)), 2)) == is_noexcept);
 
-        STATIC_ASSERT(same_as<decltype(move(as_const(rng)) | closure), R>);
-        STATIC_ASSERT(noexcept(move(as_const(rng)) | closure) == is_noexcept);
+        static_assert(same_as<decltype(move(as_const(rng)) | closure), R>);
+        static_assert(noexcept(move(as_const(rng)) | closure) == is_noexcept);
     }
 
     // Validate deduction guide
@@ -102,42 +104,42 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
     const bool is_empty = ranges::empty(expected);
 
     // Validate chunk_view::size
-    STATIC_ASSERT(CanMemberSize<R> == sized_range<V>);
+    static_assert(CanMemberSize<R> == sized_range<V>);
     if constexpr (CanMemberSize<R>) {
         same_as<_Make_unsigned_like_t<ranges::range_difference_t<V>>> auto s = r.size();
         assert(s == ranges::size(expected));
-        STATIC_ASSERT(noexcept(r.size()));
+        static_assert(noexcept(r.size()));
     }
 
-    STATIC_ASSERT(CanMemberSize<const R> == sized_range<const V>);
+    static_assert(CanMemberSize<const R> == sized_range<const V>);
     if constexpr (CanMemberSize<const R>) {
         same_as<_Make_unsigned_like_t<ranges::range_difference_t<const V>>> auto s = as_const(r).size();
         assert(s == ranges::size(expected));
-        STATIC_ASSERT(noexcept(as_const(r).size()));
+        static_assert(noexcept(as_const(r).size()));
     }
 
     // Validate view_interface::empty and operator bool
-    STATIC_ASSERT(CanMemberEmpty<R> == (sized_range<V> || forward_range<V>) );
-    STATIC_ASSERT(CanBool<R> == CanEmpty<R>);
+    static_assert(CanMemberEmpty<R> == (sized_range<V> || forward_range<V>) );
+    static_assert(CanBool<R> == CanEmpty<R>);
     if constexpr (CanMemberEmpty<R>) {
         assert(r.empty() == is_empty);
         assert(static_cast<bool>(r) == !is_empty);
     } else {
-        STATIC_ASSERT(CanEmpty<R> == CanSize<R>);
+        static_assert(CanEmpty<R> == CanSize<R>);
         if constexpr (CanEmpty<R>) {
             assert(ranges::empty(r) == is_empty);
             assert(static_cast<bool>(r) == !is_empty);
         }
     }
 
-    STATIC_ASSERT(
+    static_assert(
         CanMemberEmpty<const R> == ((forward_range<Rng> && sized_range<const V>) || forward_range<const Rng>) );
-    STATIC_ASSERT(CanBool<const R> == CanEmpty<const R>);
+    static_assert(CanBool<const R> == CanEmpty<const R>);
     if constexpr (CanMemberEmpty<const R>) {
         assert(as_const(r).empty() == is_empty);
         assert(static_cast<bool>(as_const(r)) == !is_empty);
     } else {
-        STATIC_ASSERT(CanEmpty<const R> == CanSize<const R>);
+        static_assert(CanEmpty<const R> == CanSize<const R>);
         if constexpr (CanEmpty<const R>) {
             assert(ranges::empty(as_const(r)) == is_empty);
             assert(static_cast<bool>(as_const(r)) == !is_empty);
@@ -151,7 +153,7 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
     }
 
     // Validate chunk_view::begin
-    STATIC_ASSERT(CanMemberBegin<R>);
+    static_assert(CanMemberBegin<R>);
     {
         const same_as<iterator_t<R>> auto i = r.begin();
         if (!is_empty) {
@@ -167,7 +169,7 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
         }
     }
 
-    STATIC_ASSERT(CanMemberBegin<const R> == forward_range<const V>);
+    static_assert(CanMemberBegin<const R> == forward_range<const V>);
     if constexpr (CanMemberBegin<const R>) {
         const same_as<iterator_t<const R>> auto ci = as_const(r).begin();
         if (!is_empty) {
@@ -184,11 +186,11 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
     }
 
     // Validate chunk_view::end
-    STATIC_ASSERT(CanMemberEnd<R>);
+    static_assert(CanMemberEnd<R>);
     {
         const same_as<sentinel_t<R>> auto s = r.end();
         assert((r.begin() == s) == is_empty);
-        STATIC_ASSERT(
+        static_assert(
             common_range<R> == (forward_range<V> && common_range<V> && (sized_range<V> || !bidirectional_range<V>) ));
         if constexpr (common_range<R> && bidirectional_range<V>) {
             if (!is_empty) {
@@ -204,12 +206,12 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
         }
     }
 
-    STATIC_ASSERT(CanMemberEnd<const R> == input_range<const V>);
+    static_assert(CanMemberEnd<const R> == input_range<const V>);
     if constexpr (CanMemberEnd<const R>) {
         if constexpr (CanMemberBegin<const R>) {
             const same_as<sentinel_t<const R>> auto cs = as_const(r).end();
             assert((r.begin() == cs) == is_empty);
-            STATIC_ASSERT(common_range<const R>
+            static_assert(common_range<const R>
                           == (forward_range<const V> && common_range<const V>
                               && (sized_range<const V> || !bidirectional_range<const V>) ));
             if constexpr (common_range<const R> && bidirectional_range<V>) {
@@ -225,7 +227,7 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
                 }
             }
         } else {
-            STATIC_ASSERT(same_as<decltype(as_const(r).end()), default_sentinel_t>);
+            static_assert(same_as<decltype(as_const(r).end()), default_sentinel_t>);
         }
     }
 
@@ -234,38 +236,38 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
     }
 
     // Validate view_interface::data
-    STATIC_ASSERT(!CanData<R>);
-    STATIC_ASSERT(!CanData<const R>);
+    static_assert(!CanData<R>);
+    static_assert(!CanData<const R>);
 
     // Validate view_interface::operator[]
-    STATIC_ASSERT(CanIndex<R> == random_access_range<V>);
+    static_assert(CanIndex<R> == random_access_range<V>);
     if constexpr (CanIndex<R>) {
         assert(equal(r[0], expected[0]));
     }
 
-    STATIC_ASSERT(CanIndex<const R> == random_access_range<const V>);
+    static_assert(CanIndex<const R> == random_access_range<const V>);
     if constexpr (CanIndex<const R>) {
         assert(equal(as_const(r)[0], expected[0]));
     }
 
     // Validate view_interface::front
-    STATIC_ASSERT(CanMemberFront<R> == forward_range<V>);
+    static_assert(CanMemberFront<R> == forward_range<V>);
     if constexpr (CanMemberFront<R>) {
         assert(equal(r.front(), *begin(expected)));
     }
 
-    STATIC_ASSERT(CanMemberFront<const R> == forward_range<const V>);
+    static_assert(CanMemberFront<const R> == forward_range<const V>);
     if constexpr (CanMemberFront<const R>) {
         assert(equal(as_const(r).front(), *begin(expected)));
     }
 
     // Validate view_interface::back
-    STATIC_ASSERT(CanMemberBack<R> == (bidirectional_range<V> && common_range<V> && sized_range<V>) );
+    static_assert(CanMemberBack<R> == (bidirectional_range<V> && common_range<V> && sized_range<V>) );
     if constexpr (CanMemberBack<R>) {
         assert(equal(r.back(), *prev(end(expected))));
     }
 
-    STATIC_ASSERT(
+    static_assert(
         CanMemberBack<const R> == (bidirectional_range<const V> && common_range<const V> && sized_range<const V>) );
     if constexpr (CanMemberBack<const R>) {
         assert(equal(as_const(r).back(), *prev(end(expected))));
@@ -438,16 +440,16 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
     }
 
     // Validate chunk_view::base() const&
-    STATIC_ASSERT(CanMemberBase<const R&> == copy_constructible<V>);
+    static_assert(CanMemberBase<const R&> == copy_constructible<V>);
     if constexpr (copy_constructible<V>) {
         same_as<V> auto b1 = as_const(r).base();
-        STATIC_ASSERT(noexcept(as_const(r).base()) == is_nothrow_copy_constructible_v<V>);
+        static_assert(noexcept(as_const(r).base()) == is_nothrow_copy_constructible_v<V>);
         assert(*b1.begin() == *begin(*begin(expected)));
     }
 
     // Validate chunk_view::base() && (NB: do this last since it leaves r moved-from)
     same_as<V> auto b2 = move(r).base();
-    STATIC_ASSERT(noexcept(move(r).base()) == is_nothrow_move_constructible_v<V>);
+    static_assert(noexcept(move(r).base()) == is_nothrow_move_constructible_v<V>);
     if (!is_empty) {
         assert(*b2.begin() == *begin(*begin(expected)));
     }
@@ -464,8 +466,9 @@ template <ranges::input_range Rng, class Expected>
 constexpr bool test_input(Rng&& rng, Expected&& expected) {
     using ranges::chunk_view, ranges::equal, ranges::iterator_t, ranges::sentinel_t;
 
-    using V = views::all_t<Rng>;
-    using R = chunk_view<V>;
+    using V  = views::all_t<Rng>;
+    using BI = iterator_t<V>;
+    using R  = chunk_view<V>;
 
     same_as<R> auto r = chunk_view{forward<Rng>(rng), 2};
     auto outer_iter   = r.begin();
@@ -478,6 +481,19 @@ constexpr bool test_input(Rng&& rng, Expected&& expected) {
 
     auto inner_iter                            = val_ty.begin();
     same_as<default_sentinel_t> auto inner_sen = val_ty.end();
+
+    { // Check iter_move (other tests are defined in 'test_lwg3851' function)
+        same_as<ranges::range_rvalue_reference_t<Rng>> decltype(auto) rval = iter_move(as_const(inner_iter));
+        assert(rval == expected[0][0]);
+        static_assert(noexcept(iter_move(inner_iter)) == noexcept(ranges::iter_move(declval<const BI&>())));
+    }
+
+    if constexpr (indirectly_swappable<BI>) { // Check iter_swap (other tests are defined in 'test_lwg3851' function)
+        static_assert(is_void_v<decltype(iter_swap(as_const(inner_iter), as_const(inner_iter)))>);
+        static_assert(noexcept(iter_swap(inner_iter, inner_iter))
+                      == noexcept(ranges::iter_swap(declval<const BI&>(), declval<const BI&>())));
+    }
+
     assert(inner_iter != inner_sen);
     if constexpr (sized_sentinel_for<sentinel_t<Rng>, iterator_t<Rng>>) {
         assert(inner_sen - inner_iter == 2);
@@ -579,11 +595,43 @@ using move_only_view = test::range<Category, const int, test::Sized{is_random}, 
     IsCommon, test::CanCompare{derived_from<Category, forward_iterator_tag>},
     test::ProxyRef{!derived_from<Category, contiguous_iterator_tag>}, test::CanView::yes, test::Copyability::move_only>;
 
+// Check LWG-3851: 'chunk_view::inner-iterator missing custom iter_move and iter_swap'
+void test_lwg3851() {
+    { // Check 'iter_move'
+        istringstream ints{"0 1 2 3 4"};
+        auto v = views::istream<int>(ints) | views::chunk(2);
+        auto o = v.begin();
+        auto c = *o;
+        auto i = c.begin();
+
+        same_as<int&&> decltype(auto) rval = iter_move(i);
+        assert(rval == 0);
+    }
+
+    { // Check 'iter_swap'
+        istringstream ints1{"0 1 2 3 4"};
+        auto v1 = views::istream<int>(ints1) | views::chunk(2);
+        auto o1 = v1.begin();
+        auto c1 = *o1;
+        auto i1 = c1.begin();
+
+        istringstream ints2{"5 6 7 8 9"};
+        auto v2 = views::istream<int>(ints2) | views::chunk(2);
+        auto o2 = v2.begin();
+        auto c2 = *o2;
+        auto i2 = c2.begin();
+
+        iter_swap(as_const(i1), as_const(i2));
+        assert(*i1 == 5);
+        assert(*i2 == 0);
+    }
+}
+
 int main() {
     { // Validate views
         // ... copyable
         constexpr span<const int> s{some_ints};
-        STATIC_ASSERT(test_one(s, chunks_of_two));
+        static_assert(test_one(s, chunks_of_two));
         test_one(s, chunks_of_two);
     }
 
@@ -598,7 +646,7 @@ int main() {
     }
 
     { // Validate non-views
-        STATIC_ASSERT(test_one(some_ints, chunks_of_two));
+        static_assert(test_one(some_ints, chunks_of_two));
         test_one(some_ints, chunks_of_two);
     }
     {
@@ -611,10 +659,12 @@ int main() {
     }
 
     { // empty range
-        STATIC_ASSERT(test_one(span<const int, 0>{}, span<span<const int>>{}));
+        static_assert(test_one(span<const int, 0>{}, span<span<const int>>{}));
         test_one(span<const int, 0>{}, span<span<const int>>{});
     }
 
-    STATIC_ASSERT((instantiation_test(), true));
+    static_assert((instantiation_test(), true));
     instantiation_test();
+
+    test_lwg3851();
 }

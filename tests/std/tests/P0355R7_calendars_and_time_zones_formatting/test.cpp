@@ -5,10 +5,13 @@
 #include <chrono>
 #include <clocale>
 #include <concepts>
+#include <cstdint>
 #include <cstdio>
 #include <format>
 #include <iostream>
+#include <limits>
 #include <locale>
+#include <ratio>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -19,6 +22,8 @@
 
 using namespace std;
 using namespace chrono;
+
+constexpr auto intmax_max = numeric_limits<intmax_t>::max();
 
 template <typename CharT>
 [[nodiscard]] constexpr const CharT* choose_literal(const char* const str, const wchar_t* const wstr) noexcept {
@@ -41,7 +46,7 @@ template <typename CharT>
 template <typename CharT>
 struct testing_callbacks {
     _Fmt_align expected_alignment = _Fmt_align::_None;
-    basic_string_view<CharT> expected_fill;
+    basic_string_view<CharT> expected_fill{};
     int expected_width                   = -1;
     size_t expected_dynamic_width        = static_cast<size_t>(-1);
     bool expected_auto_dynamic_width     = false;
@@ -208,11 +213,11 @@ bool test_parse_chrono_format_specs() {
 }
 
 template <class charT, class... Args>
-auto make_testing_format_args(Args&&... vals) {
+auto make_testing_format_args(Args&&... vals) { // references to temporaries are risky, see P2905R2; we'll be careful
     if constexpr (is_same_v<charT, wchar_t>) {
-        return make_wformat_args(forward<Args>(vals)...);
+        return make_wformat_args(vals...);
     } else {
-        return make_format_args(forward<Args>(vals)...);
+        return make_format_args(vals...);
     }
 }
 
@@ -247,13 +252,22 @@ void empty_braces_helper(
 
 template <typename CharT>
 void test_duration_formatter() {
+    using LongRatio = ratio<intmax_max - 1, intmax_max>;
+
     empty_braces_helper(seconds{5}, STR("5s"));
     empty_braces_helper(minutes{7}, STR("7min"));
     empty_braces_helper(hours{9}, STR("9h"));
     empty_braces_helper(days{2}, STR("2d"));
     empty_braces_helper(-seconds{5}, STR("-5s"));
+    empty_braces_helper(duration<int, ratio<2>>{40}, STR("40[2]s"));
     empty_braces_helper(duration<int, ratio<3, 1>>{40}, STR("40[3]s"));
     empty_braces_helper(duration<int, ratio<3, 7>>{40}, STR("40[3/7]s"));
+    empty_braces_helper(duration<int, ratio<1, 2>>{40}, STR("40[1/2]s"));
+    empty_braces_helper(duration<int, ratio<22, 7>>{40}, STR("40[22/7]s"));
+    empty_braces_helper(duration<int, ratio<53, 101>>{40}, STR("40[53/101]s"));
+    empty_braces_helper(duration<int, ratio<201, 2147483647>>{40}, STR("40[201/2147483647]s"));
+    // TRANSITION, LWG-3921: duration_cast used in formatting may raise UB
+    empty_braces_helper(duration<int, LongRatio>{1}, STR("1[9223372036854775806/9223372036854775807]s"));
 
     // formatting small types needs to work as iostreams << VSO-1521926
     empty_braces_helper(duration<long long, atto>{123}, STR("123as"));
@@ -262,12 +276,16 @@ void test_duration_formatter() {
     assert(format(STR("{:%T}"), 4083007ms) == STR("01:08:03.007"));
     assert(format(STR("{:%T}"), -4083007ms) == STR("-01:08:03.007"));
 
-    assert(format(STR("{:%T %j %q %Q}"), days{4} + 30min) == STR("00:30:00 4 min 5790"));
-    assert(format(STR("{:%T %j %q %Q}"), -days{4} - 30min) == STR("-00:30:00 4 min 5790"));
-    assert(format(STR("{:%T %j}"), days{4} + 23h + 30min) == STR("23:30:00 4"));
-    assert(format(STR("{:%T %j}"), -days{4} - 23h - 30min) == STR("-23:30:00 4"));
-    assert(format(STR("{:%T %j}"), duration<float, days::period>{1.55f}) == STR("13:11:59 1"));
-    assert(format(STR("{:%T %j}"), duration<float, days::period>{-1.55f}) == STR("-13:11:59 1"));
+    assert(format(STR("{:%T %j %q %Q}"), days{4} + 30min) == STR("96:30:00 4 min 5790"));
+    assert(format(STR("{:%T %j %q %Q}"), -days{4} - 30min) == STR("-96:30:00 4 min 5790"));
+    assert(format(STR("{:%T %j}"), days{4} + 23h + 30min) == STR("119:30:00 4"));
+    assert(format(STR("{:%T %j}"), -days{4} - 23h - 30min) == STR("-119:30:00 4"));
+    assert(format(STR("{:%T %j}"), duration<float, days::period>{1.55f}) == STR("37:11:59 1"));
+    assert(format(STR("{:%T %j}"), duration<float, days::period>{-1.55f}) == STR("-37:11:59 1"));
+
+    // GH-4247: <chrono>: format() should accept %X and %EX for duration and hh_mm_ss
+    assert(format(STR("{:%X}"), 9h + 7min + 5s) == STR("09:07:05"));
+    assert(format(STR("{:%EX}"), 9h + 7min + 5s) == STR("09:07:05"));
 }
 
 template <typename CharT>
@@ -371,51 +389,36 @@ void test_day_formatter() {
 
     // 2 digits
     day d0{27};
-    auto res = format(s0, d0);
-    assert(res == a0);
-    res = format(s1, d0);
-    assert(res == a0);
+    assert(format(s0, d0) == a0);
+    assert(format(s1, d0) == a0);
 
     // 1 digit
     day d1{5};
-    res = format(s0, d1);
-    assert(res == a1);
-    res = format(s1, d1);
-    assert(res == a2);
+    assert(format(s0, d1) == a1);
+    assert(format(s1, d1) == a2);
 
     // O modifier
-    res = format(s2, d0);
-    assert(res == a0);
-    res = format(s3, d0);
-    assert(res == a0);
-    res = format(s2, d1);
-    assert(res == a1);
-    res = format(s3, d1);
-    assert(res == a2);
+    assert(format(s2, d0) == a0);
+    assert(format(s3, d0) == a0);
+    assert(format(s2, d1) == a1);
+    assert(format(s3, d1) == a2);
 
     // [time.format]/6
     day d2{50};
-    res = format(s4, d0);
-    assert(res == a0);
-    res = format(s4, d2);
-    assert(res == a3);
+    assert(format(s4, d0) == a0);
+    assert(format(s4, d2) == a3);
 
     // width/align
-    res = format(s5, d0);
-    assert(res == a4);
-    res = format(s5, d1);
-    assert(res == a5);
-    res = format(s5, d2);
-    assert(res == a3);
+    assert(format(s5, d0) == a4);
+    assert(format(s5, d1) == a5);
+    assert(format(s5, d2) == a3);
 
     // chrono-spec must begin with conversion-spec
     throw_helper(s6, d0);
 
     // lit chars
-    res = format(s7, d0);
-    assert(res == a7);
-    res = format(s8, d0);
-    assert(res == a8);
+    assert(format(s7, d0) == a7);
+    assert(format(s8, d0) == a8);
 
     assert(format(STR("{:%d %d %d}"), day{27}) == STR("27 27 27"));
     assert(format(STR("{:%d}"), day{200}) == STR("200"));
@@ -470,7 +473,7 @@ void test_year_formatter() {
 
 template <typename CharT>
 void test_weekday_formatter() {
-    weekday invalid{10};
+    constexpr weekday invalid{10};
     empty_braces_helper(weekday{3}, STR("Wed"));
     empty_braces_helper(invalid, STR("10 is not a valid weekday"));
 
@@ -608,7 +611,7 @@ void test_year_month_formatter() {
 
 template <typename CharT>
 void test_year_month_day_formatter() {
-    year_month_day invalid{year{1234}, month{0}, day{31}};
+    constexpr year_month_day invalid{year{1234}, month{0}, day{31}};
     empty_braces_helper(year_month_day{year{1900}, month{2}, day{1}}, STR("1900-02-01"));
     empty_braces_helper(invalid, STR("1234-00-31 is not a valid date"));
 
@@ -761,9 +764,15 @@ void test_hh_mm_ss_formatter() {
     assert(format(STR("{:%H %I %M %S %r %R %T %p}"), hh_mm_ss{-13h - 14min - 15351ms})
            == STR("-13 01 14 15.351 01:14:15 PM 13:14 13:14:15.351 PM"));
 
-    throw_helper(STR("{}"), hh_mm_ss{24h});
-    throw_helper(STR("{}"), hh_mm_ss{-24h});
+    assert(format(STR("{}"), hh_mm_ss{24h}) == STR("24:00:00"));
+    assert(format(STR("{}"), hh_mm_ss{-24h}) == STR("-24:00:00"));
+    assert(format(STR("{:%H}"), hh_mm_ss{24h}) == STR("24"));
+    assert(format(STR("{:%H}"), hh_mm_ss{-24h}) == STR("-24"));
     assert(format(STR("{:%M %S}"), hh_mm_ss{27h + 12min + 30s}) == STR("12 30"));
+
+    // GH-4247: <chrono>: format() should accept %X and %EX for duration and hh_mm_ss
+    assert(format(STR("{:%X}"), hh_mm_ss{9h + 7min + 5s}) == STR("09:07:05"));
+    assert(format(STR("{:%EX}"), hh_mm_ss{9h + 7min + 5s}) == STR("09:07:05"));
 }
 
 void test_exception_classes() {
@@ -798,11 +807,11 @@ void test_exception_classes() {
         }
 
         assert(s
-                   == "2016-11-06 01:30:00 is ambiguous. It could be\n"
+                   == "2016-11-06 01:30:00 is ambiguous.  It could be\n"
                       "2016-11-06 01:30:00 EDT == 2016-11-06 05:30:00 UTC or\n"
                       "2016-11-06 01:30:00 EST == 2016-11-06 06:30:00 UTC"
                || s
-                      == "2016-11-06 01:30:00 is ambiguous. It could be\n"
+                      == "2016-11-06 01:30:00 is ambiguous.  It could be\n"
                          "2016-11-06 01:30:00 GMT-4 == 2016-11-06 05:30:00 UTC or\n"
                          "2016-11-06 01:30:00 GMT-5 == 2016-11-06 06:30:00 UTC");
     }

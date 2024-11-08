@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#define _USE_JOIN_VIEW_INPUT_RANGE
-
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -145,7 +143,9 @@ constexpr bool test_one(Outer&& rng, Expected&& expected) {
 
         // Validate join_view::begin
         static_assert(CanMemberBegin<R>);
-        static_assert(CanMemberBegin<const R> == (input_range<const V> && is_reference_v<range_reference_t<const V>>) );
+        static_assert(CanMemberBegin<const R>
+                      == (forward_range<const V> && is_reference_v<range_reference_t<const V>>
+                          && input_range<range_reference_t<const V>>) );
         if (forward_range<R>) {
             const iterator_t<R> i = r.begin();
             if (!is_empty) {
@@ -177,16 +177,27 @@ constexpr bool test_one(Outer&& rng, Expected&& expected) {
             }
         }
 
+        // Also validate that join_view iterators are default-constructible
+        {
+            static_assert(is_default_constructible_v<iterator_t<R>>);
+            [[maybe_unused]] iterator_t<R> i;
+            if constexpr (CanMemberBegin<const R>) {
+                static_assert(is_default_constructible_v<iterator_t<const R>>);
+                [[maybe_unused]] iterator_t<const R> ci;
+            }
+        }
+
         // Validate join_view::end
         static_assert(CanMemberEnd<R>);
-        static_assert(CanMemberEnd<const R> == (input_range<const V> && is_reference_v<range_reference_t<const V>>) );
-        // clang-format off
-        static_assert(common_range<R> == (forward_range<V> && is_reference_v<range_reference_t<V>> && common_range<V>
-                                          && forward_range<Inner> && common_range<Inner>) );
-        static_assert(common_range<const R> == (forward_range<const V> && is_reference_v<range_reference_t<const V>>
-                                                && common_range<const V> && forward_range<range_reference_t<const V>>
-                                                && common_range<range_reference_t<const V>>) );
-        // clang-format on
+        static_assert(CanMemberEnd<const R>
+                      == (forward_range<const V> && is_reference_v<range_reference_t<const V>>
+                          && input_range<range_reference_t<const V>>) );
+        static_assert(common_range<R>
+                      == (forward_range<V> && is_reference_v<range_reference_t<V>> && common_range<V>
+                          && forward_range<Inner> && common_range<Inner>) );
+        static_assert(common_range<const R>
+                      == (forward_range<const V> && is_reference_v<range_reference_t<const V>> && common_range<const V>
+                          && forward_range<range_reference_t<const V>> && common_range<range_reference_t<const V>>) );
         const ranges::sentinel_t<R> s = r.end();
         if (!is_empty) {
             if constexpr (bidirectional_range<R> && common_range<R>) {
@@ -213,6 +224,77 @@ constexpr bool test_one(Outer&& rng, Expected&& expected) {
             }
         }
 
+#if _HAS_CXX23
+        using ranges::const_iterator_t, ranges::const_sentinel_t;
+
+        // Validate view_interface::cbegin
+        static_assert(CanMemberCBegin<R>);
+        static_assert(CanMemberCBegin<const R>
+                      == (forward_range<const V> && is_reference_v<range_reference_t<const V>>
+                          && input_range<range_reference_t<const V>>) );
+        if (forward_range<R>) { // intentionally not if constexpr
+            const same_as<const_iterator_t<R>> auto ci = r.cbegin();
+            if (!is_empty) {
+                assert(*ci == *begin(expected));
+            }
+
+            if constexpr (copyable<V>) {
+                auto r2                                     = r;
+                const same_as<const_iterator_t<R>> auto ci2 = r2.cbegin();
+                if (!is_empty) {
+                    assert(*ci2 == *ci);
+                }
+            }
+
+            static_assert(CanMemberCBegin<const R> == CanCBegin<const R&>);
+            if constexpr (CanMemberCBegin<const R>) {
+                const same_as<const_iterator_t<const R>> auto ci2 = as_const(r).cbegin();
+                if (!is_empty) {
+                    assert(*ci2 == *ci);
+                }
+
+                if constexpr (copyable<V>) {
+                    const auto r2                                     = r;
+                    const same_as<const_iterator_t<const R>> auto ci3 = r2.cbegin();
+                    if (!is_empty) {
+                        assert(*ci3 == *ci);
+                    }
+                }
+            }
+        }
+
+        // Validate view_interface::cend
+        static_assert(CanMemberCEnd<R>);
+        static_assert(CanMemberCEnd<const R>
+                      == (forward_range<const V> && is_reference_v<range_reference_t<const V>>
+                          && input_range<range_reference_t<const V>>) );
+        const same_as<const_sentinel_t<R>> auto cs = r.end();
+        if (!is_empty) {
+            if constexpr (bidirectional_range<R> && common_range<R>) {
+                assert(*prev(cs) == *prev(end(expected)));
+
+                if constexpr (copyable<V>) {
+                    auto r2 = r;
+                    assert(*prev(r2.cend()) == *prev(end(expected)));
+                }
+            }
+
+            static_assert(CanMemberCEnd<const R> == CanCEnd<const R&>);
+            if constexpr (CanMemberCEnd<const R>) {
+                const same_as<const_sentinel_t<const R>> auto cs2 = as_const(r).cend();
+                if constexpr (bidirectional_range<R> && common_range<R>) {
+                    assert(*prev(cs2) == *prev(end(expected)));
+
+                    if constexpr (copyable<V>) {
+                        const auto r2                                     = r;
+                        const same_as<const_sentinel_t<const R>> auto cs3 = r2.cend();
+                        assert(*prev(cs3) == *prev(end(expected)));
+                    }
+                }
+            }
+        }
+#endif // _HAS_CXX23
+
         // Validate view_interface::data
         static_assert(!CanData<R>);
         static_assert(!CanData<const R>);
@@ -235,10 +317,9 @@ constexpr bool test_one(Outer&& rng, Expected&& expected) {
         }
 
         static_assert(CanMemberBack<R> == (bidirectional_range<R> && common_range<R>) );
-        // clang-format off
-        static_assert(CanMemberBack<const R> == (bidirectional_range<const R> && common_range<const R>
-                                                 && is_reference_v<range_reference_t<const V>>) );
-        // clang-format on
+        static_assert(
+            CanMemberBack<const R>
+            == (bidirectional_range<const R> && common_range<const R> && is_reference_v<range_reference_t<const V>>) );
         if (!is_empty) {
             if constexpr (CanMemberBack<R>) {
                 assert(r.back() == *prev(end(expected)));
@@ -512,7 +593,7 @@ void test_non_trivially_destructible_type() { // COMPILE-ONLY
 
 // GH-3014 "<ranges>: list-initialization is misused"
 void test_gh_3014() { // COMPILE-ONLY
-    struct InRange {
+    struct FwdRange {
         string* begin() {
             return nullptr;
         }
@@ -526,8 +607,85 @@ void test_gh_3014() { // COMPILE-ONLY
         }
     };
 
-    auto r                                           = InRange{} | views::join;
+    auto r                                           = FwdRange{} | views::join;
     [[maybe_unused]] decltype(as_const(r).begin()) i = r.begin(); // Check 'iterator(iterator<!Const> i)'
+}
+
+constexpr bool test_lwg3698() {
+    // LWG-3698 "regex_iterator and join_view don't work together very well"
+    struct stashing_iterator {
+        using difference_type = int;
+        using value_type      = span<const int>;
+
+        int x = 1;
+
+        constexpr stashing_iterator& operator++() {
+            ++x;
+            return *this;
+        }
+        constexpr void operator++(int) {
+            ++x;
+        }
+        constexpr value_type operator*() const {
+            return {&x, &x + 1};
+        }
+        constexpr bool operator==(default_sentinel_t) const {
+            return x > 3;
+        }
+    };
+
+    auto r   = ranges::subrange{stashing_iterator{}, default_sentinel} | views::join;
+    auto r2  = r;
+    auto it  = r.begin();
+    auto it2 = r2.begin();
+
+    auto itcopy = it;
+    it          = ++it2;
+    assert(*itcopy == 1);
+
+    struct intricate_range {
+        constexpr stashing_iterator begin() {
+            return {};
+        }
+        constexpr default_sentinel_t end() {
+            return {};
+        }
+        constexpr const span<const int>* begin() const {
+            return ranges::begin(intervals);
+        }
+        constexpr const span<const int>* end() const {
+            return ranges::end(intervals);
+        }
+    };
+
+    auto jv  = intricate_range{} | views::join;
+    auto cit = as_const(jv).begin();
+    assert(*++cit == 1);
+    assert(*--cit == 0);
+    assert(ranges::equal(as_const(jv), expected_ints));
+
+    return true;
+}
+
+void test_lwg3700() { // COMPILE-ONLY
+    // LWG-3700 "The const begin of the join_view family does not require InnerRng to be a range"
+    auto r  = views::iota(0, 5) | views::filter([](auto) { return true; });
+    auto j  = views::single(r) | views::join;
+    using J = decltype(j);
+    static_assert(!CanMemberBegin<const J>);
+    static_assert(!CanMemberEnd<const J>);
+}
+
+constexpr bool test_lwg3791() {
+    // LWG-3791 "join_view::iterator::operator-- may be ill-formed"
+    // Validate that join_view<V> works when range_reference_t<V> is an rvalue reference
+    using inner = test::range<bidirectional_iterator_tag, const int>;
+    using outer = test::range<bidirectional_iterator_tag, inner, test::Sized::no, test::CanDifference::no,
+        test::Common::yes, test::CanCompare::yes, test::ProxyRef::xvalue, test::CanView::yes>;
+
+    instantiator::call<inner, outer>();
+
+    return true;
 }
 
 int main() {
@@ -552,7 +710,7 @@ int main() {
         static constexpr int join_me[5][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {8, 9}};
 #if defined(__clang__) || defined(__EDG__) // TRANSITION, VSO-934264
         static_assert(test_one(join_me, expected_ints));
-#endif // TRANSITION, VSO-934264
+#endif // ^^^ no workaround ^^^
         test_one(join_me, expected_ints);
     }
     { // ... fwd container
@@ -597,13 +755,17 @@ int main() {
 
     { // P2328 range of prvalue string using global function
         assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToString) | views::join, expected));
+#if !(defined(_DEBUG) && defined(__EDG__)) // TRANSITION, VSO-1948896, see also GH-1566
         static_assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToString) | views::join, expected));
+#endif // ^^^ no workaround ^^^
     }
 
     { // P2328 range of prvalue string using lambda
         constexpr auto ToStringLambda = [](const size_t i) { return string{prvalue_input[i]}; };
         assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToStringLambda) | views::join, expected));
+#if !(defined(_DEBUG) && defined(__EDG__)) // TRANSITION, VSO-1948896, see also GH-1566
         static_assert(ranges::equal(views::iota(0u, 5u) | views::transform(ToStringLambda) | views::join, expected));
+#endif // ^^^ no workaround ^^^
     }
 
     { // Immovable type
@@ -620,6 +782,12 @@ int main() {
         assert(ranges::equal(filtered_and_joined, result));
     }
 
-    STATIC_ASSERT(instantiation_test());
+    static_assert(instantiation_test());
     instantiation_test();
+
+    static_assert(test_lwg3698());
+    assert(test_lwg3698());
+
+    static_assert(test_lwg3791());
+    assert(test_lwg3791());
 }

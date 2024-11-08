@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
+#include <print>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 using namespace std;
@@ -19,9 +20,11 @@ constexpr size_t max_line_length = 120;
 
 class BinaryFile {
 public:
-    explicit BinaryFile(const filesystem::path& filepath) : m_file(_wfopen(filepath.c_str(), L"rb")) {
-        if (!m_file) {
-            fwprintf(stderr, L"Validation failed: %ls couldn't be opened.\n", filepath.c_str());
+    explicit BinaryFile(const filesystem::path& filepath) {
+        const auto err = _wfopen_s(&m_file, filepath.c_str(), L"rb");
+
+        if (err != 0 || !m_file) {
+            println(stderr, "Validation failed: {} couldn't be opened.", filepath.string());
         }
     }
 
@@ -38,8 +41,8 @@ public:
     }
 
     ~BinaryFile() {
-        if (fclose(m_file) != 0) {
-            fwprintf(stderr, L"fclose() failed.\n");
+        if (m_file && fclose(m_file) != 0) {
+            println(stderr, "fclose() failed.");
             abort();
         }
     }
@@ -51,20 +54,13 @@ private:
     FILE* m_file{nullptr};
 };
 
-int validation_failure(
-    bool& any_errors, const filesystem::path& filepath, _Printf_format_string_ const wchar_t* format, ...) {
+template <class... Args>
+void validation_failure(
+    bool& any_errors, const filesystem::path& filepath, format_string<type_identity_t<Args>...> fmt, Args&&... args) {
     any_errors = true;
-
-    fwprintf(stderr, L"##vso[task.logissue type=error;sourcepath=%ls;linenumber=1;columnnumber=1]Validation failed: ",
-        filepath.c_str());
-
-    va_list args;
-    va_start(args, format);
-    const int result = vfwprintf(stderr, format, args);
-    va_end(args);
-
-    fwprintf(stderr, L"\n");
-    return result;
+    print(stderr, "##vso[task.logissue type=error;sourcepath={};linenumber=1;columnnumber=1]Validation failed: ",
+        filepath.string());
+    println(stderr, fmt, forward<Args>(args)...);
 }
 
 enum class TabPolicy : bool { Forbidden, Allowed };
@@ -116,7 +112,7 @@ void scan_file(
                 ++disallowed_characters;
                 constexpr size_t MaxErrorsForDisallowedCharacters = 10;
                 if (disallowed_characters <= MaxErrorsForDisallowedCharacters) {
-                    validation_failure(any_errors, filepath, L"file contains disallowed character 0x%02X.",
+                    validation_failure(any_errors, filepath, "file contains disallowed character 0x{:02X}.",
                         static_cast<unsigned int>(ch));
                 }
             }
@@ -142,38 +138,38 @@ void scan_file(
     }
 
     if (has_cr) {
-        validation_failure(any_errors, filepath, L"file contains CR line endings (possibly damaged CRLF).");
+        validation_failure(any_errors, filepath, "file contains CR line endings (possibly damaged CRLF).");
     } else if (has_lf && has_crlf) {
-        validation_failure(any_errors, filepath, L"file contains mixed line endings (both LF and CRLF).");
+        validation_failure(any_errors, filepath, "file contains mixed line endings (both LF and CRLF).");
     } else if (has_lf) {
-        validation_failure(any_errors, filepath, L"file contains LF line endings.");
+        validation_failure(any_errors, filepath, "file contains LF line endings.");
 
         if (prev != LF) {
-            validation_failure(any_errors, filepath, L"file doesn't end with a newline.");
+            validation_failure(any_errors, filepath, "file doesn't end with a newline.");
         } else if (previous2 == LF) {
-            validation_failure(any_errors, filepath, L"file ends with multiple newlines.");
+            validation_failure(any_errors, filepath, "file ends with multiple newlines.");
         }
     } else if (has_crlf) {
         if (previous2 != CR || prev != LF) {
-            validation_failure(any_errors, filepath, L"file doesn't end with a newline.");
+            validation_failure(any_errors, filepath, "file doesn't end with a newline.");
         } else if (previous3 == LF) {
-            validation_failure(any_errors, filepath, L"file ends with multiple newlines.");
+            validation_failure(any_errors, filepath, "file ends with multiple newlines.");
         }
     } else {
-        validation_failure(any_errors, filepath, L"file doesn't contain any newlines.");
+        validation_failure(any_errors, filepath, "file doesn't contain any newlines.");
     }
 
     if (has_utf8_bom) {
-        validation_failure(any_errors, filepath, L"file contains UTF-8 BOM characters.");
+        validation_failure(any_errors, filepath, "file contains UTF-8 BOM characters.");
     }
 
     if (tab_policy == TabPolicy::Forbidden && tab_characters != 0) {
-        validation_failure(any_errors, filepath, L"file contains %zu tab characters.", tab_characters);
+        validation_failure(any_errors, filepath, "file contains {} tab characters.", tab_characters);
     }
 
     if (trailing_whitespace_lines != 0) {
         validation_failure(
-            any_errors, filepath, L"file contains %zu lines with trailing whitespace.", trailing_whitespace_lines);
+            any_errors, filepath, "file contains {} lines with trailing whitespace.", trailing_whitespace_lines);
     }
 
     if (overlength_lines != 0) {
@@ -192,7 +188,7 @@ void scan_file(
         static_assert(ranges::is_sorted(checked_extensions));
 
         if (ranges::binary_search(checked_extensions, filepath.extension().wstring())) {
-            validation_failure(any_errors, filepath, L"file contains %zu lines with more than %zu columns.\n",
+            validation_failure(any_errors, filepath, "file contains {} lines with more than {} columns.",
                 overlength_lines, max_line_length);
         }
     }
@@ -217,6 +213,12 @@ int main() {
         L".obj"sv,
     };
 
+    // CODE_OF_CONDUCT.md and SECURITY.md are copied exactly from https://github.com/microsoft/repo-templates
+    static constexpr array skipped_relative_paths{
+        LR"(.\CODE_OF_CONDUCT.md)"sv,
+        LR"(.\SECURITY.md)"sv,
+    };
+
     // make sure someone doesn't accidentally include a diff in the tree
     static constexpr array bad_extensions{
         L".diff"sv,
@@ -227,10 +229,16 @@ int main() {
         L".gitmodules"sv,
     };
 
+    static constexpr array tabby_extensions{
+        L".lst"sv,
+    };
+
     static_assert(ranges::is_sorted(skipped_directories));
     static_assert(ranges::is_sorted(skipped_extensions));
+    static_assert(ranges::is_sorted(skipped_relative_paths));
     static_assert(ranges::is_sorted(bad_extensions));
     static_assert(ranges::is_sorted(tabby_filenames));
+    static_assert(ranges::is_sorted(tabby_extensions));
 
     vector<unsigned char> buffer; // reused for performance
     bool any_errors = false;
@@ -252,14 +260,18 @@ int main() {
 
         const wstring& relative_path = filepath.native();
 
+        if (ranges::binary_search(skipped_relative_paths, relative_path)) {
+            continue;
+        }
+
         constexpr size_t maximum_relative_path_length = 120;
         if (relative_path.size() > maximum_relative_path_length) {
-            validation_failure(any_errors, filepath, L"filepath is too long (%zu characters; the limit is %zu).",
+            validation_failure(any_errors, filepath, "filepath is too long ({} characters; the limit is {}).",
                 relative_path.size(), maximum_relative_path_length);
         }
 
         if (relative_path.find(L' ') != wstring::npos) {
-            validation_failure(any_errors, filepath, L"filepath contains spaces.");
+            validation_failure(any_errors, filepath, "filepath contains spaces.");
         }
 
         const wstring extension = filepath.extension().wstring();
@@ -269,19 +281,19 @@ int main() {
         }
 
         if (ranges::binary_search(bad_extensions, extension)) {
-            validation_failure(any_errors, filepath, L"file should not be checked in.");
+            validation_failure(any_errors, filepath, "file should not be checked in.");
             continue;
         }
 
-        const TabPolicy tab_policy =
-            ranges::binary_search(tabby_filenames, filename) ? TabPolicy::Allowed : TabPolicy::Forbidden;
+        const TabPolicy tab_policy{
+            ranges::binary_search(tabby_filenames, filename) || ranges::binary_search(tabby_extensions, extension)};
 
         scan_file(any_errors, filepath, tab_policy, buffer);
     }
 
     if (any_errors) {
-        fwprintf(
-            stderr, L"##vso[task.logissue type=warning]If your build fails here, you need to fix the listed issues.\n");
-        fwprintf(stderr, L"##vso[task.complete result=Failed]DONE\n");
+        println(
+            stderr, "##vso[task.logissue type=warning]If your build fails here, you need to fix the listed issues.");
+        println(stderr, "##vso[task.complete result=Failed]DONE");
     }
 }

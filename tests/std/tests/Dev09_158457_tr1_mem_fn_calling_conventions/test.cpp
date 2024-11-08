@@ -64,7 +64,7 @@ struct Cat {
     }
 #endif
 
-#if (defined(_M_IX86) || defined(_M_X64)) && !defined(_M_CEE)
+#if (defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC))) && !defined(_M_CEE)
     int __vectorcall g() {
         return 2;
     }
@@ -115,7 +115,7 @@ int y(int i) {
 }
 #endif
 
-#if (defined(_M_IX86) || defined(_M_X64)) && !defined(_M_CEE)
+#if (defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC))) && !defined(_M_CEE)
 int __vectorcall z(int i) {
     return -4 * i;
 }
@@ -139,7 +139,7 @@ const int free_correct   = 433343; // x86 pure
 #elif defined(_M_X64)
 #if !defined(_M_CEE)
 const int member_correct = 2211112; // x64 native
-const int free_correct = 433334; // x64 native
+const int free_correct   = 433334; // x64 native
 #elif !defined(_M_CEE_PURE)
 const int member_correct = 2211121; // x64 ijw
 const int free_correct   = 433343; // x64 ijw

@@ -80,8 +80,8 @@ namespace test_apply {
 namespace test_make_from_tuple {
     template <class T, class Tuple>
     concept CanMakeFromTuple = requires(Tuple tuple_like) {
-                                   { make_from_tuple<T>(tuple_like) } -> same_as<T>;
-                               };
+        { make_from_tuple<T>(tuple_like) } -> same_as<T>;
+    };
 
     static_assert(CanMakeFromTuple<string, tuple<>>);
     static_assert(CanMakeFromTuple<string, tuple<size_t, char>>);
@@ -127,7 +127,7 @@ namespace test_make_from_tuple {
             assert(make_from_tuple<S>(tuple{&a, &b}) == expected_val);
             assert(make_from_tuple<S>(pair{&a, &b}) == expected_val);
             assert(make_from_tuple<S>(array{&a, &b}) == expected_val);
-            assert(make_from_tuple<S>(subrange{&a, &b}) == expected_val);
+            assert(make_from_tuple<S>(subrange{&a, &a + 1}) == (S{&a, &a + 1}));
         }
 
         { // Test make_from_tuple with big tuple-like types
@@ -164,10 +164,12 @@ namespace test_tuple_cat {
     static_assert(CheckTupleCat<tuple<long, long, long, long>, array<long, 2>, pair<long, long>>);
     static_assert(CheckTupleCat<tuple<int, wchar_t*, wchar_t*>, array<int, 1>, subrange<wchar_t*, wchar_t*>>);
     static_assert(!CanTupleCat<void>);
+#ifndef __EDG__ // TRANSITION, VSO-1900281
     static_assert(!CanTupleCat<int>);
     static_assert(!CanTupleCat<int, tuple<int>>);
     static_assert(!CanTupleCat<int, array<int, 1>>);
     static_assert(!CanTupleCat<tuple<>, tuple<int>, int>);
+#endif // ^^^ no workaround ^^^
 
     constexpr bool test() {
         // Test tuple_cat with empty tuple-like types
@@ -178,9 +180,8 @@ namespace test_tuple_cat {
 
         { // Test tuple_cat with pair-like types
             int a = 0;
-            int b = 1;
-            assert(
-                (tuple_cat(tuple{1, 2}, array{3, 4}, pair{5, 6}, subrange{&a, &b}) == tuple{1, 2, 3, 4, 5, 6, &a, &b}));
+            assert((tuple_cat(tuple{1, 2}, array{3, 4}, pair{5, 6}, subrange{&a, &a + 1})
+                    == tuple{1, 2, 3, 4, 5, 6, &a, &a + 1}));
         }
 
         // Test tuple_cat with big tuple-like types

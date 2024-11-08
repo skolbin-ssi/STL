@@ -63,6 +63,46 @@ void non_literal_parts(R& r, E& expected) {
             }
         }
     }
+
+#if _HAS_CXX23
+    using ranges::const_iterator_t;
+
+    const same_as<const_iterator_t<R>> auto cfirst = r.cbegin();
+    if (!is_empty) {
+        assert(*cfirst == *begin(expected));
+    }
+
+    if constexpr (copyable<V>) {
+        auto r2                                         = r;
+        const same_as<const_iterator_t<R>> auto cfirst2 = r2.cbegin();
+        if (!is_empty) {
+            assert(*cfirst2 == *cfirst);
+        }
+    }
+
+    if constexpr (CanCBegin<const R&>) {
+        const same_as<const_iterator_t<const R>> auto cfirst3 = as_const(r).cbegin();
+        if (!is_empty) {
+            assert(*cfirst3 == *cfirst);
+        }
+    }
+
+    const same_as<const_iterator_t<R>> auto clast = r.cend();
+    if constexpr (bidirectional_range<R>) {
+        if (!is_empty) {
+            assert(*prev(clast) == *prev(end(expected)));
+        }
+    }
+
+    if constexpr (CanCEnd<const R&>) {
+        const same_as<const_iterator_t<const R>> auto clast2 = as_const(r).cend();
+        if constexpr (bidirectional_range<const R>) {
+            if (!is_empty) {
+                assert(*prev(clast2) == *prev(end(expected)));
+            }
+        }
+    }
+#endif // _HAS_CXX23
 }
 
 template <class Rng, class Expected>
@@ -303,10 +343,10 @@ constexpr bool test_one(Rng&& rng, Expected&& expected) {
         }
 
         // Validate common_view::begin and common_view::end
-        STATIC_ASSERT(CanMemberBegin<R>);
-        STATIC_ASSERT(CanBegin<const R&> == range<const V>);
-        STATIC_ASSERT(CanMemberEnd<R>);
-        STATIC_ASSERT(CanEnd<const R&> == range<const V>);
+        static_assert(CanMemberBegin<R>);
+        static_assert(CanBegin<const R&> == range<const V>);
+        static_assert(CanMemberEnd<R>);
+        static_assert(CanEnd<const R&> == range<const V>);
         if (!is_constant_evaluated()) {
             non_literal_parts<V>(r, expected);
         }
@@ -437,20 +477,20 @@ struct difference_type_only_iterator {
         return *this;
     }
 
-    friend constexpr difference_type_only_iterator operator+(
-        difference_type_only_iterator i, same_as<ptrdiff_t> auto n) noexcept {
+    template <same_as<ptrdiff_t> U>
+    friend constexpr difference_type_only_iterator operator+(difference_type_only_iterator i, U n) noexcept {
         i += n;
         return i;
     }
 
-    friend constexpr difference_type_only_iterator operator+(
-        same_as<ptrdiff_t> auto n, difference_type_only_iterator i) noexcept {
+    template <same_as<ptrdiff_t> U>
+    friend constexpr difference_type_only_iterator operator+(U n, difference_type_only_iterator i) noexcept {
         i += n;
         return i;
     }
 
-    friend constexpr difference_type_only_iterator operator-(
-        difference_type_only_iterator i, same_as<ptrdiff_t> auto n) noexcept {
+    template <same_as<ptrdiff_t> U>
+    friend constexpr difference_type_only_iterator operator-(difference_type_only_iterator i, U n) noexcept {
         i -= n;
         return i;
     }
@@ -501,6 +541,34 @@ constexpr bool test_lwg3717() {
     return true;
 }
 
+constexpr bool test_lwg_4012() {
+    struct simple_view_with_difference_on_const : ranges::view_interface<simple_view_with_difference_on_const> {
+        constexpr difference_type_only_iterator<int> begin() noexcept {
+            return {nullptr};
+        }
+        constexpr difference_type_only_sentinel<int> end() noexcept {
+            return {nullptr};
+        }
+        constexpr difference_type_only_iterator<int> begin() const noexcept {
+            return {p_};
+        }
+        constexpr difference_type_only_sentinel<int> end() const noexcept {
+            return {p_};
+        }
+
+        int* p_;
+    };
+
+    int n{};
+    auto cv = views::common(simple_view_with_difference_on_const{{}, &n});
+
+    assert(cv.begin() == as_const(cv).begin());
+    assert(cv.begin() == as_const(cv).end());
+    assert(as_const(cv).begin() == cv.end());
+
+    return true;
+}
+
 int main() {
     // Get full instantiation coverage
     static_assert((test_in<instantiator, const int>(), true));
@@ -511,4 +579,7 @@ int main() {
 
     assert(test_lwg3717<int>());
     assert(test_lwg3717<const int>());
+
+    static_assert(test_lwg_4012());
+    test_lwg_4012();
 }

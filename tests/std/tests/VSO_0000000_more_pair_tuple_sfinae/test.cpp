@@ -558,6 +558,13 @@ STATIC_ASSERT(!is_constructible_v<tuple<A>, allocator_arg_t, allocator<int>, pai
 STATIC_ASSERT(is_constructible_v<tuple<A, A>, allocator_arg_t, allocator<int>, pair<Ex, Ex>>);
 STATIC_ASSERT(!is_constructible_v<tuple<A, A, A>, allocator_arg_t, allocator<int>, pair<Ex, Ex>>);
 
+// Also test that the internal constructor used for the piecewise_construct_t constructor of pair is not public.
+STATIC_ASSERT(!is_constructible_v<pair<int, int>, tuple<>&, tuple<>&, make_index_sequence<0>, make_index_sequence<0>>);
+STATIC_ASSERT(
+    !is_constructible_v<pair<int, int>, tuple<int>&, tuple<>&, make_index_sequence<1>, make_index_sequence<0>>);
+STATIC_ASSERT(
+    !is_constructible_v<pair<int, int>, tuple<int>&, tuple<int>&, make_index_sequence<1>, make_index_sequence<1>>);
+
 
 pair<int, int> func1() {
     const int x = 17;
@@ -643,9 +650,6 @@ void test_VSO_191303() {
 // VSO-215996 "<tuple>: Wrong tuple constructor overload resolution causes stack overflow"
 // VSO-216014 "<tuple>: Tuple constructor overload resolution error"
 
-template <typename X>
-struct AlwaysFalse : false_type {};
-
 // AbsorbingRef and AbsorbingVal need to appear to be omni-constructible,
 // so they use static_assert instead of =delete.
 
@@ -656,7 +660,7 @@ struct AbsorbingRef {
 
     template <typename T>
     AbsorbingRef(const T&) {
-        STATIC_ASSERT(AlwaysFalse<T>::value);
+        STATIC_ASSERT(false);
     }
 };
 
@@ -667,7 +671,7 @@ struct AbsorbingVal {
 
     template <typename U>
     AbsorbingVal(U) {
-        STATIC_ASSERT(AlwaysFalse<U>::value);
+        STATIC_ASSERT(false);
     }
 };
 

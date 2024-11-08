@@ -13,7 +13,10 @@
 #include <thread>
 #include <utility>
 
+#pragma warning(push) // TRANSITION, OS-23694920
+#pragma warning(disable : 4668) // 'MEOW' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
 #include <Windows.h>
+#pragma warning(pop)
 
 using namespace std;
 using namespace std::chrono;
@@ -145,12 +148,9 @@ public:
 
 template <typename Func>
 nanoseconds time_execution(Func&& f) {
-    // system_clock currently powers mutex waits, so we're using system_clock
-    // rather than high_resolution_clock here for consistency. This should be
-    // fixed with VSO-133414, VSO-166543, VSO-189735.
-    const auto startTime = system_clock::now();
+    const auto startTime = steady_clock::now();
     forward<Func>(f)();
-    return duration_cast<nanoseconds>(system_clock::now() - startTime);
+    return duration_cast<nanoseconds>(steady_clock::now() - startTime);
 }
 
 template <typename Mutex>
@@ -295,7 +295,7 @@ struct mutex_test_fixture {
         // Test acquiring locks successfully
         assert(time_execution([this] { assert(mtx.try_lock_for(24h)); }) < 1h);
         mtx.unlock();
-        assert(time_execution([this] { assert(mtx.try_lock_until(system_clock::now() + 24h)); }) < 1h);
+        assert(time_execution([this] { assert(mtx.try_lock_until(steady_clock::now() + 24h)); }) < 1h);
         mtx.unlock();
         assert(time_execution([this] {
             unique_lock<Mutex> ul(mtx, defer_lock);
@@ -307,18 +307,17 @@ struct mutex_test_fixture {
         }) < 1h);
         assert(time_execution([this] {
             unique_lock<Mutex> ul(mtx, defer_lock);
-            assert(ul.try_lock_until(system_clock::now() + 24h));
+            assert(ul.try_lock_until(steady_clock::now() + 24h));
         }) < 1h);
         assert(time_execution([this] {
-            unique_lock<Mutex> ul(mtx, system_clock::now() + 24h);
+            unique_lock<Mutex> ul(mtx, steady_clock::now() + 24h);
             assert(ul.owns_lock());
         }) < 1h);
 
-#if 0 // TRANSITION, GH-1472
-      // Test failing to acquire locks on timeout
+        // Test failing to acquire locks on timeout
         ot.lock();
         assert(time_execution([this] { assert(!mtx.try_lock_for(50ms)); }) >= 50ms);
-        assert(time_execution([this] { assert(!mtx.try_lock_until(system_clock::now() + 50ms)); }) >= 50ms);
+        assert(time_execution([this] { assert(!mtx.try_lock_until(steady_clock::now() + 50ms)); }) >= 50ms);
         assert(time_execution([this] {
             unique_lock<Mutex> ul(mtx, defer_lock);
             assert(!ul.try_lock_for(50ms));
@@ -329,58 +328,13 @@ struct mutex_test_fixture {
         }) >= 50ms);
         assert(time_execution([this] {
             unique_lock<Mutex> ul(mtx, defer_lock);
-            assert(!ul.try_lock_until(system_clock::now() + 50ms));
+            assert(!ul.try_lock_until(steady_clock::now() + 50ms));
         }) >= 50ms);
         assert(time_execution([this] {
-            unique_lock<Mutex> ul(mtx, system_clock::now() + 50ms);
+            unique_lock<Mutex> ul(mtx, steady_clock::now() + 50ms);
             assert(!ul.owns_lock());
         }) >= 50ms);
         ot.unlock();
-#endif // TRANSITION, GH-1472
-    }
-
-    // nonstandard xtime type
-    template <class Rep, class Period>
-    xtime to_xtime(const chrono::duration<Rep, Period>& rel_time) { // convert duration to xtime
-        xtime xt;
-        if (rel_time <= chrono::duration<Rep, Period>::zero()) { // negative or zero relative time, return zero
-            xt.sec  = 0;
-            xt.nsec = 0;
-        } else { // positive relative time, convert
-            chrono::nanoseconds t0 = chrono::system_clock::now().time_since_epoch();
-            t0 += chrono::duration_cast<chrono::nanoseconds>(rel_time);
-            xt.sec = chrono::duration_cast<chrono::seconds>(t0).count();
-            t0 -= chrono::seconds(xt.sec);
-            xt.nsec = static_cast<long>(t0.count());
-        }
-        return xt;
-    }
-
-    void test_timed_lockable_xtime() {
-        assert(time_execution([this] {
-            const auto xt = to_xtime(24h);
-            assert(mtx.try_lock_until(&xt));
-        }) < 1h);
-        mtx.unlock();
-        assert(time_execution([this] {
-            const auto xt = to_xtime(24h);
-            unique_lock<Mutex> ul(mtx, defer_lock);
-            assert(ul.try_lock_until(&xt));
-        }) < 1h);
-
-#if 0 // TRANSITION, GH-1472
-        ot.lock();
-        assert(time_execution([this] {
-            const auto xt = to_xtime(50ms);
-            assert(!mtx.try_lock_until(&xt));
-        }) >= 50ms);
-        assert(time_execution([this] {
-            const auto xt = to_xtime(50ms);
-            unique_lock<Mutex> ul(mtx, defer_lock);
-            assert(!ul.try_lock_until(&xt));
-        }) >= 50ms);
-        ot.unlock();
-#endif // TRANSITION, GH-1472
     }
 
     void test_recursive_lockable() {
@@ -512,6 +466,18 @@ void test_vso_1253916() {
     do_shared_locked_things(shared_lock<shared_mutex>{mtx});
 }
 
+#ifndef _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR
+struct test_constexpr_ctor {
+    constexpr test_constexpr_ctor() {}
+    mutex mtx;
+};
+
+test_constexpr_ctor obj;
+#if _HAS_CXX20 && !defined(_M_CEE)
+constinit test_constexpr_ctor obj2;
+#endif // _HAS_CXX20 && !defined(_M_CEE)
+#endif // !defined(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+
 int main() {
     {
         mutex_test_fixture<mutex> fixture;
@@ -522,7 +488,6 @@ int main() {
         mutex_test_fixture<timed_mutex> fixture;
         fixture.test_lockable();
         fixture.test_timed_lockable();
-        fixture.test_timed_lockable_xtime();
     }
 
     {
@@ -535,7 +500,6 @@ int main() {
         mutex_test_fixture<recursive_timed_mutex> fixture;
         fixture.test_lockable();
         fixture.test_timed_lockable();
-        fixture.test_timed_lockable_xtime();
         fixture.test_recursive_lockable();
     }
 

@@ -6,7 +6,7 @@
                 "type": "git",
                 "git": {
                     "repositoryUrl": "https://github.com/boostorg/math",
-                    "commitHash": "f395de082eca6ee993a15f2bdb90277eda518295"
+                    "commitHash": "4d0885ae44f7d4ce94568339b2ae5501eb234e8f"
                 }
             }
         },
@@ -15,7 +15,7 @@
                 "type": "git",
                 "git": {
                     "repositoryUrl": "https://github.com/llvm/llvm-project.git",
-                    "commitHash": "b8d38e8b4fcab071c5c4cb698e154023d06de69e"
+                    "commitHash": "12fcca0afeb08fbe41d79c5387cfacb249992bb4"
                 }
             }
         },

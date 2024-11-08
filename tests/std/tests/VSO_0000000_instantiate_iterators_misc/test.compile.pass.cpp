@@ -18,6 +18,7 @@
 #define _SILENCE_CXX20_REL_OPS_DEPRECATION_WARNING
 #define _SILENCE_CXX20_U8PATH_DEPRECATION_WARNING
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
+#define _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
 #define _SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING
 #define _USE_NAMED_IDL_NAMESPACE 1
 
@@ -553,9 +554,13 @@ void future_test() {
     swap_test(pv);
 
     packaged_task<void()> pt([]() {});
+    // GH-321: "<future>: packaged_task can't be constructed from a move-only lambda"
+    packaged_task<void()> pt2([uptr = unique_ptr<int>{}]() { (void) uptr; });
 
 #if _HAS_FUNCTION_ALLOCATOR_SUPPORT
     packaged_task<void()> pta(allocator_arg, allocator<double>{}, []() {});
+    // GH-321: "<future>: packaged_task can't be constructed from a move-only lambda"
+    packaged_task<void()> pta2(allocator_arg, allocator<double>{}, [uptr = unique_ptr<int>{}]() { (void) uptr; });
 #endif // _HAS_FUNCTION_ALLOCATOR_SUPPORT
 
     swap_test(pt);
@@ -571,16 +576,22 @@ void future_test() {
 }
 #endif // _M_CEE_PURE
 
-template <typename IoManipIn, typename IoManipOut>
-void iomanip_test_impl(IoManipIn in, IoManipOut out) {
+template <typename IoManipOut, typename IoManipIn>
+void iomanip_test_impl(IoManipOut out, IoManipIn in) {
     stringstream ss{};
-    ss << in;
-    ss >> out;
+    ss << out;
+    ss >> in;
 }
 
 template <typename IoManip>
 void iomanip_test_impl(IoManip iom) {
     iomanip_test_impl(iom, iom);
+}
+
+template <typename IoManip>
+void iomanip_test_impl_for_setfill(IoManip out) {
+    stringstream ss{};
+    ss << out;
 }
 
 void iomanip_test() {
@@ -591,7 +602,7 @@ void iomanip_test() {
     localtime_s(&time, &t);
     string str = "string with \" quotes ";
 
-    iomanip_test_impl(sf);
+    iomanip_test_impl_for_setfill(sf);
     iomanip_test_impl(put_money(money), get_money(money));
     iomanip_test_impl(put_time(&time, "%c %Z"), get_time(&time, "%c %Z"));
     iomanip_test_impl(quoted(str.c_str()), quoted(str));
@@ -1155,8 +1166,6 @@ void random_test() {
     distribution_test_impl(piece_line_d1);
     distribution_test_impl(piece_line_d2);
     distribution_test_impl(piece_line_d3);
-
-    (void) uni_int_d(gen, uni_int_d(gen));
 }
 
 void ratio_test() {
@@ -1274,7 +1283,8 @@ template <typename RegexTokenIterator>
 void regex_token_iterator_test_impl() {
     using it_type      = typename RegexTokenIterator::value_type::iterator;
     int submatches[10] = {0};
-    it_type start{}, finish{};
+    it_type start{};
+    it_type finish{};
     typename RegexTokenIterator::regex_type rgx{};
     RegexTokenIterator rti0(start, finish, rgx, submatches);
 }
@@ -1623,7 +1633,7 @@ void typeindex_test() {
 
 template <typename FunctorArg, typename Arg>
 void functors_test_impl(Arg val) {
-    // Following from <xstddef>:
+    // Following from <type_traits> and <xutility>:
     (void) plus<FunctorArg>()(val, val);
     (void) minus<FunctorArg>()(val, val);
     (void) multiplies<FunctorArg>()(val, val);

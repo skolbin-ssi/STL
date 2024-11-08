@@ -15,6 +15,10 @@
 #include <type_traits>
 #include <utility>
 
+#if _HAS_CXX17
+#include <memory_resource>
+#endif // _HAS_CXX17
+
 #if _HAS_CXX20
 #include <syncstream>
 #endif // _HAS_CXX20
@@ -32,6 +36,8 @@ struct test_exception {};
 template <class CharT>
 class throwing_buffer : public basic_streambuf<CharT> {
 public:
+    using typename basic_streambuf<CharT>::int_type;
+
     streampos seekoff(streamoff, ios_base::seekdir, ios_base::openmode = ios_base::in | ios_base::out) override {
         throw test_exception{};
     }
@@ -41,6 +47,10 @@ public:
     }
 
     int sync() override {
+        throw test_exception{};
+    }
+
+    int_type underflow() override {
         throw test_exception{};
     }
 
@@ -225,6 +235,32 @@ void test_ostream_exceptions() {
             // Expected case
         }
     }
+
+    { // operator<< (testing GH-4322 "<ostream>: Exception from streambuf should be caught and not rethrown")
+        basic_ostream<CharT> os(buffer.to_buf());
+
+        try {
+            os << &buffer;
+        } catch (const ios_base::failure&) {
+            assert(false);
+        } catch (const test_exception&) {
+            assert(false);
+        }
+    }
+
+    { // operator<< rethrows the caught exception if failbit is set in exceptions()
+        basic_ostream<CharT> os(buffer.to_buf());
+        os.exceptions(ios_base::failbit);
+
+        try {
+            os << &buffer;
+            assert(false);
+        } catch (const ios_base::failure&) {
+            assert(false);
+        } catch (const test_exception&) {
+            // Expected case
+        }
+    }
 }
 
 // Also test strengthened and mandatory exception specifications.
@@ -321,6 +357,27 @@ STATIC_ASSERT(is_nothrow_move_assignable_v<ostringstream>);
 STATIC_ASSERT(is_nothrow_move_assignable_v<wostringstream>);
 STATIC_ASSERT(is_nothrow_move_assignable_v<stringstream>);
 STATIC_ASSERT(is_nothrow_move_assignable_v<wstringstream>);
+
+// GH-4232: <sstream>: basic_stringbuf shouldn't implement moving with swapping
+// These operations need to be able to throw exceptions when the source and target allocators are unequal.
+#if _HAS_CXX17
+STATIC_ASSERT(
+    !is_nothrow_move_assignable_v<basic_stringbuf<char, char_traits<char>, pmr::polymorphic_allocator<char>>>);
+STATIC_ASSERT(
+    !is_nothrow_move_assignable_v<basic_stringbuf<wchar_t, char_traits<wchar_t>, pmr::polymorphic_allocator<wchar_t>>>);
+STATIC_ASSERT(
+    !is_nothrow_move_assignable_v<basic_istringstream<char, char_traits<char>, pmr::polymorphic_allocator<char>>>);
+STATIC_ASSERT(!is_nothrow_move_assignable_v<
+              basic_istringstream<wchar_t, char_traits<wchar_t>, pmr::polymorphic_allocator<wchar_t>>>);
+STATIC_ASSERT(
+    !is_nothrow_move_assignable_v<basic_ostringstream<char, char_traits<char>, pmr::polymorphic_allocator<char>>>);
+STATIC_ASSERT(!is_nothrow_move_assignable_v<
+              basic_ostringstream<wchar_t, char_traits<wchar_t>, pmr::polymorphic_allocator<wchar_t>>>);
+STATIC_ASSERT(
+    !is_nothrow_move_assignable_v<basic_stringstream<char, char_traits<char>, pmr::polymorphic_allocator<char>>>);
+STATIC_ASSERT(!is_nothrow_move_assignable_v<
+              basic_stringstream<wchar_t, char_traits<wchar_t>, pmr::polymorphic_allocator<wchar_t>>>);
+#endif // _HAS_CXX17
 
 STATIC_ASSERT(is_nothrow_std_swappable<stringbuf>);
 STATIC_ASSERT(is_nothrow_std_swappable<wstringbuf>);

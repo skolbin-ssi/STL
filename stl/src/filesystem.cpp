@@ -4,11 +4,6 @@
 // filesystem.cpp -- C++17 <filesystem> implementation
 // (see filesys.cpp for <experimental/filesystem> implementation)
 
-// This must be as small as possible, because its contents are
-// injected into the msvcprt.lib and msvcprtd.lib import libraries.
-// Do not include or define anything else here.
-// In particular, basic_string must not be included here.
-
 #include <clocale>
 #include <corecrt_terminate.h>
 #include <cstdlib>
@@ -34,9 +29,9 @@ namespace {
         return 0;
     }
 #define __vcrt_CreateSymbolicLinkW _Not_supported_CreateSymbolicLinkW
-#else // ^^^ _CRT_APP / !_CRT_APP vvv
+#else // ^^^ defined(_CRT_APP) / !defined(_CRT_APP) vvv
 #define __vcrt_CreateSymbolicLinkW CreateSymbolicLinkW
-#endif // _CRT_APP
+#endif // ^^^ !defined(_CRT_APP) ^^^
 
 #ifdef _CRT_APP
     HANDLE __stdcall __vcp_CreateFile(const wchar_t* const _File_name, const unsigned long _Desired_access,
@@ -51,9 +46,9 @@ namespace {
         _Create_file_parameters.hTemplateFile        = _Template_file;
         return CreateFile2(_File_name, _Desired_access, _Share, _Creation_disposition, &_Create_file_parameters);
     }
-#else // ^^^ _CRT_APP / !_CRT_APP vvv
+#else // ^^^ defined(_CRT_APP) / !defined(_CRT_APP) vvv
 #define __vcp_CreateFile CreateFileW
-#endif // _CRT_APP
+#endif // ^^^ !defined(_CRT_APP) ^^^
 
     [[nodiscard]] __std_win_error __stdcall _Translate_CreateFile_last_error(const HANDLE _Handle) {
         if (_Handle != INVALID_HANDLE_VALUE) {
@@ -147,13 +142,14 @@ namespace {
         BY_HANDLE_FILE_INFORMATION _Info;
         if (GetFileInformationByHandle(_Handle, &_Info)) {
             _Id->VolumeSerialNumber = _Info.dwVolumeSerialNumber;
-            _CSTD memcpy(&_Id->FileId.Identifier[0], &_Info.nFileIndexHigh, 8); // copying from 2 consecutive DWORDs
+            _CSTD memcpy(&_Id->FileId.Identifier[0], &_Info.nFileIndexHigh, 4);
+            _CSTD memcpy(&_Id->FileId.Identifier[4], &_Info.nFileIndexLow, 4);
             _CSTD memset(&_Id->FileId.Identifier[8], 0, 8);
             return __std_win_error::_Success;
         }
 
         _Last_error = __std_win_error{GetLastError()};
-#endif // _CRT_APP
+#endif // !defined(_CRT_APP)
 
         return _Last_error;
     }
@@ -192,7 +188,7 @@ namespace {
     }
 } // unnamed namespace
 
-_EXTERN_C
+extern "C" {
 
 [[nodiscard]] __std_ulong_and_error __stdcall __std_fs_get_full_path_name(_In_z_ const wchar_t* _Source,
     _In_ unsigned long _Target_size, _Out_writes_z_(_Target_size) wchar_t* _Target) noexcept { // calls GetFullPathNameW
@@ -212,7 +208,7 @@ _EXTERN_C
 
 void __stdcall __std_fs_close_handle(const __std_fs_file_handle _Handle) noexcept { // calls CloseHandle
     if (_Handle != __std_fs_file_handle::_Invalid && !CloseHandle(reinterpret_cast<HANDLE>(_Handle))) {
-        terminate();
+        _CSTD abort();
     }
 }
 
@@ -257,7 +253,7 @@ static_assert(alignof(WIN32_FIND_DATAW) == alignof(__std_fs_find_data));
 
 void __stdcall __std_fs_directory_iterator_close(_In_ const __std_fs_dir_handle _Handle) noexcept {
     if (_Handle != __std_fs_dir_handle::_Invalid && !FindClose(reinterpret_cast<HANDLE>(_Handle))) {
-        terminate();
+        _CSTD abort();
     }
 }
 
@@ -604,7 +600,6 @@ _Success_(return == __std_win_error::_Success) __std_win_error
     }
 
     if (_Last_error == __std_win_error::_Access_denied && _Able_to_change_attributes) {
-
         FILE_BASIC_INFO _Basic_info;
         if (!GetFileInformationByHandleEx(_Handle._Get(), FileBasicInfo, &_Basic_info, sizeof(_Basic_info))) {
             return {false, __std_win_error{GetLastError()}};
@@ -791,8 +786,8 @@ _Success_(return == __std_win_error::_Success) __std_win_error
 }
 
 namespace {
-    _Success_(return > 0 && return < nBufferLength) DWORD WINAPI
-        _Stl_GetTempPath2W(_In_ DWORD nBufferLength, _Out_writes_to_opt_(nBufferLength, return +1) LPWSTR lpBuffer) {
+    _Success_(return > 0 && return < nBufferLength) DWORD WINAPI _Stl_GetTempPath2W(
+        _In_ DWORD nBufferLength, _Out_writes_to_opt_(nBufferLength, return +1) LPWSTR lpBuffer) noexcept {
         // See GH-3011: This is intentionally not attempting to cache the function pointer.
         // TRANSITION, ABI: This should use __crtGetTempPath2W after this code is moved into the STL's DLL.
         using _Fun_ptr = decltype(&::GetTempPath2W);
@@ -1033,4 +1028,4 @@ namespace {
     return __std_win_error{GetLastError()};
 }
 
-_END_EXTERN_C
+} // extern "C"

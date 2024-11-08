@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#pragma warning(disable : 5215) // volatile function arguments are deprecated in C++20
+
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wdeprecated-volatile" // volatile function arguments are deprecated in C++20
+#endif // __clang__
+
 #include <cassert>
 #include <concepts>
 #include <iterator>
@@ -13,22 +19,22 @@ using P = pair<int, int>;
 
 template <class Iter>
 concept CanDifference = requires(Iter it) {
-                            { it - it };
-                        };
+    { it - it };
+};
 
 template <class Iter>
-concept HasProxy = (!is_reference_v<iter_reference_t<Iter>>);
+concept HasProxy = !is_reference_v<iter_reference_t<Iter>>;
 
 template <class Iter>
 concept CanArrow = requires(const Iter& i) {
-                       { i.operator->() };
-                   };
+    { i.operator->() };
+};
 
 struct instantiator {
     template <input_or_output_iterator Iter>
     static constexpr void call() {
         if constexpr (copyable<Iter>) {
-            using ConstIter = typename Iter::Consterator;
+            using ConstIter = Iter::Consterator;
             using Sen       = test::sentinel<iter_value_t<Iter>>;
             using OSen      = test::sentinel<const iter_value_t<Iter>>;
             using Cit       = common_iterator<Iter, Sen>;
@@ -37,25 +43,25 @@ struct instantiator {
 
             // [common.iter.types]
             {
-                using iconcept = typename iterator_traits<Cit>::iterator_concept;
+                using iconcept = iterator_traits<Cit>::iterator_concept;
                 if constexpr (forward_iterator<Iter>) {
-                    STATIC_ASSERT(same_as<iconcept, forward_iterator_tag>);
+                    static_assert(same_as<iconcept, forward_iterator_tag>);
                 } else {
-                    STATIC_ASSERT(same_as<typename iterator_traits<Cit>::iterator_concept, input_iterator_tag>);
+                    static_assert(same_as<typename iterator_traits<Cit>::iterator_concept, input_iterator_tag>);
                 }
 
-                using icat = typename iterator_traits<Cit>::iterator_category;
+                using icat = iterator_traits<Cit>::iterator_category;
                 if constexpr (derived_from<icat, forward_iterator_tag>) {
-                    STATIC_ASSERT(same_as<icat, forward_iterator_tag>);
+                    static_assert(same_as<icat, forward_iterator_tag>);
                 } else {
-                    STATIC_ASSERT(same_as<icat, input_iterator_tag>);
+                    static_assert(same_as<icat, input_iterator_tag>);
                 }
 
-                using ipointer = typename iterator_traits<Cit>::pointer;
+                using ipointer = iterator_traits<Cit>::pointer;
                 if constexpr (CanArrow<Cit>) {
-                    STATIC_ASSERT(same_as<ipointer, decltype(declval<const Cit&>().operator->())>);
+                    static_assert(same_as<ipointer, decltype(declval<const Cit&>().operator->())>);
                 } else {
-                    STATIC_ASSERT(same_as<ipointer, void>);
+                    static_assert(same_as<ipointer, void>);
                 }
             }
 
@@ -155,7 +161,7 @@ struct instantiator {
                 if constexpr (input_iterator<Iter>) { // iter_move
                     Cit iter1{Iter{input}};
 
-                    const same_as<iter_value_t<Iter>> auto element1 = ranges::iter_move(iter1);
+                    const same_as<iter_value_t<Iter>> auto element1(ranges::iter_move(iter1));
                     assert(element1 == P(0, 1));
                 }
 
@@ -219,11 +225,11 @@ struct input_copy_but_no_eq {
 
     bool operator==(default_sentinel_t) const;
 };
-STATIC_ASSERT(input_iterator<input_copy_but_no_eq>);
-STATIC_ASSERT(no_iterator_traits<input_copy_but_no_eq>);
-STATIC_ASSERT(sentinel_for<default_sentinel_t, input_copy_but_no_eq>);
+static_assert(input_iterator<input_copy_but_no_eq>);
+static_assert(no_iterator_traits<input_copy_but_no_eq>);
+static_assert(sentinel_for<default_sentinel_t, input_copy_but_no_eq>);
 using ICID = iterator_traits<common_iterator<input_copy_but_no_eq, default_sentinel_t>>;
-STATIC_ASSERT(same_as<typename ICID::iterator_category, input_iterator_tag>);
+static_assert(same_as<typename ICID::iterator_category, input_iterator_tag>);
 
 struct poor_sentinel {
     poor_sentinel() = default;
@@ -309,6 +315,24 @@ constexpr bool test_lwg_3574() {
     return true;
 }
 
+template <class It, class Se>
+concept common_iterator_has_iterator_category =
+    requires { typename iterator_traits<common_iterator<It, Se>>::iterator_category; };
+
+// LWG-3749 common_iterator should handle integer-class difference types
+void test_lwg_3749() { // COMPILE-ONLY
+    static_assert(common_iterator_has_iterator_category<int*, const int*>);
+    static_assert(common_iterator_has_iterator_category<int*, unreachable_sentinel_t>);
+
+    using small_unbounded_iota = decltype(views::iota(42));
+    static_assert(common_iterator_has_iterator_category<ranges::iterator_t<small_unbounded_iota>,
+        ranges::sentinel_t<small_unbounded_iota>>);
+
+    using large_unbounded_iota = decltype(views::iota(42ull));
+    static_assert(!common_iterator_has_iterator_category<ranges::iterator_t<large_unbounded_iota>,
+                  ranges::sentinel_t<large_unbounded_iota>>);
+}
+
 // Validate that _Variantish works when fed with a non-trivially-destructible type
 void test_non_trivially_destructible_type() { // COMPILE-ONLY
     struct non_trivially_destructible_input_iterator {
@@ -332,6 +356,84 @@ void test_non_trivially_destructible_type() { // COMPILE-ONLY
     common_iterator<non_trivially_destructible_input_iterator, default_sentinel_t> it;
 }
 
+struct VolatileSentinel {
+    VolatileSentinel()                                   = default;
+    VolatileSentinel(const VolatileSentinel&)            = default;
+    VolatileSentinel(VolatileSentinel&&)                 = default;
+    VolatileSentinel& operator=(const VolatileSentinel&) = default;
+    VolatileSentinel& operator=(VolatileSentinel&&)      = default;
+
+    constexpr explicit VolatileSentinel(const char* p) noexcept : ptr_{p} {}
+
+    template <class T = VolatileSentinel>
+    constexpr VolatileSentinel(const volatile type_identity_t<T>& other) noexcept : ptr_{other.ptr_} {}
+    template <class T = VolatileSentinel>
+    constexpr VolatileSentinel(const volatile type_identity_t<T>&& other) noexcept : ptr_{other.ptr_} {}
+
+    template <class T = VolatileSentinel>
+    VolatileSentinel& operator=(volatile type_identity_t<T>& rhs) noexcept {
+        ptr_ = rhs.ptr_;
+        return *this;
+    }
+    template <class T = VolatileSentinel>
+    VolatileSentinel& operator=(volatile type_identity_t<T>&& rhs) noexcept {
+        ptr_ = rhs.ptr_;
+        return *this;
+    }
+    template <class T = VolatileSentinel>
+    VolatileSentinel& operator=(const volatile type_identity_t<T>& rhs) noexcept {
+        ptr_ = rhs.ptr_;
+        return *this;
+    }
+    template <class T = VolatileSentinel>
+    VolatileSentinel& operator=(const volatile type_identity_t<T>&& rhs) noexcept {
+        ptr_ = rhs.ptr_;
+        return *this;
+    }
+
+    template <class T = VolatileSentinel>
+    volatile VolatileSentinel& operator=(const volatile type_identity_t<T>& rhs) volatile noexcept {
+        ptr_ = rhs.ptr_;
+        return *this;
+    }
+    template <class T = VolatileSentinel>
+    volatile VolatileSentinel& operator=(const volatile type_identity_t<T>&& rhs) volatile noexcept {
+        ptr_ = rhs.ptr_;
+        return *this;
+    }
+
+    friend constexpr bool operator==(const char* const lhs, VolatileSentinel rhs) noexcept {
+        return lhs == rhs.ptr_;
+    }
+
+    friend constexpr auto operator-(const char* const lhs, VolatileSentinel rhs) noexcept {
+        return lhs - rhs.ptr_;
+    }
+
+    friend constexpr auto operator-(VolatileSentinel lhs, const char* const rhs) noexcept {
+        return lhs.ptr_ - rhs;
+    }
+
+    const char* ptr_ = nullptr;
+};
+
+// constexpr-incompatible
+void test_volatile() {
+    using std::swap;
+    using CommonIt = common_iterator<const char*, volatile VolatileSentinel>;
+
+    CommonIt it{static_cast<const char*>(nullptr)};
+    CommonIt se{VolatileSentinel{static_cast<const char*>(nullptr)}};
+
+    assert(it == se);
+    assert(it - se == 0);
+    assert(se - it == 0);
+
+    swap(it, it);
+    it = se;
+    it = move(se);
+}
+
 int main() {
     with_writable_iterators<instantiator, P>::call();
     static_assert(with_writable_iterators<instantiator, P>::call());
@@ -344,4 +446,6 @@ int main() {
 
     test_lwg_3574();
     static_assert(test_lwg_3574());
+
+    test_volatile(); // constexpr-incompatible
 }

@@ -81,13 +81,13 @@ int total_fail = 0;
 #ifdef AFMT
 int afmt = 1;
 #else // AFMT
-int afmt    = 0;
+int afmt = 0;
 #endif // AFMT
 
 #ifdef TERSE
 int terse = 1;
 #else // TERSE
-int terse   = 0;
+int terse = 0;
 #endif // TERSE
 
 #ifdef VERBOSE
@@ -369,7 +369,6 @@ int ulp = EPS_ULPL;
 #endif // value of FLOAT_TYPE
 
 int approx2(Float_type d1, Float_type d2, Float_type sensitivity) { // test for approximate equality
-#if 199901L <= __STDC_VERSION__
     if (isunordered(d1, d2)) { // at least one NaN
         if (!terse) { // report NaNs
             if (isnan(d1)) {
@@ -381,9 +380,7 @@ int approx2(Float_type d1, Float_type d2, Float_type sensitivity) { // test for 
             }
         }
         return 0;
-    } else
-#endif // 199901L <= __STDC_VERSION__
-    { // compare finite values
+    } else { // compare finite values
         Float_type err;
 
         if (d2 != (Float_type) 0) {

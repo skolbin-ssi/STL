@@ -115,8 +115,8 @@ struct intermediateType {
     intermediateType() = delete;
     explicit intermediateType(int) {} // so that the test can make one of these
     explicit intermediateType(transformedType&&) {} // Intermediate tmp(unary_op(*first))
-    // Intermediate tmp(binary_op((one of tmp, move(tmp), unary_op(*first)), unary_op(*first)))
-    explicit intermediateType(bopResult&&) {}
+    // Intermediate tmp = binary_op((one of tmp, move(tmp), unary_op(*first)), unary_op(*first));
+    /* implicit */ intermediateType(bopResult&&) {}
     intermediateType(const intermediateType&)            = delete;
     intermediateType(intermediateType&&)                 = default; // tmp = move(tmp)
     intermediateType& operator=(const intermediateType&) = delete;
@@ -151,7 +151,7 @@ struct outputType {
 struct transformUop {
     transformedType operator()(inputType&) {
         return 0;
-    };
+    }
 };
 
 struct typesBop {
@@ -177,11 +177,6 @@ struct typesBop {
         return 0;
     }
     bopResult operator()(intermediateType&&, intermediateType&&) {
-        return 0;
-    }
-
-    // *result = binary_op(tmp, move(*result))
-    bopResult operator()(intermediateType&, outputType&&) {
         return 0;
     }
 };

@@ -3,7 +3,6 @@
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#pragma once
 #ifndef _SCOPED_ALLOCATOR_
 #define _SCOPED_ALLOCATOR_
 #include <yvals_core.h>
@@ -206,8 +205,8 @@ public:
         return static_cast<const _Outer&>(*this);
     }
 
-    _NODISCARD_RAW_PTR_ALLOC __declspec(allocator) pointer
-        allocate(_CRT_GUARDOVERFLOW size_type _Count) { // allocate array of _Count elements, ignore hint
+    _NODISCARD_RAW_PTR_ALLOC __declspec(allocator) pointer allocate(_CRT_GUARDOVERFLOW size_type _Count) {
+        // allocate array of _Count elements, ignore hint
         return _Outer_traits::allocate(outer_allocator(), _Count);
     }
 

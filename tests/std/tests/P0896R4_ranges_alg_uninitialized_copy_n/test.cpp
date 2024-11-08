@@ -16,7 +16,7 @@
 using namespace std;
 
 // Validate that uninitialized_copy_n_result aliases in_out_result
-STATIC_ASSERT(same_as<ranges::uninitialized_copy_n_result<int, double>, ranges::in_out_result<int, double>>);
+static_assert(same_as<ranges::uninitialized_copy_n_result<int, double>, ranges::in_out_result<int, double>>);
 
 struct int_wrapper {
     inline static int constructions = 0;
@@ -235,7 +235,7 @@ struct memcpy_test {
 
 template <test::ProxyRef IsProxy>
 using test_input  = test::range<test::input, int_wrapper, test::Sized::no, test::CanDifference::no, test::Common::no,
-    test::CanCompare::no, IsProxy>;
+     test::CanCompare::no, IsProxy>;
 using test_output = test::range<test::fwd, int_wrapper, test::Sized::no, test::CanDifference::no, test::Common::no,
     test::CanCompare::yes, test::ProxyRef::no>;
 

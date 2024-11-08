@@ -22,19 +22,12 @@
 // VSO-768746: mbctype.h macroizes _MS, _MP, _M1, and _M2. Include it first for test coverage.
 #ifndef _MSVC_TESTING_NVCC
 #include <mbctype.h>
-#endif // _MSVC_TESTING_NVCC
+#endif // !defined(_MSVC_TESTING_NVCC)
 
-#if 1 // TRANSITION, OS-17090155 (UCRT)
-#define _CRT_DECLARE_NONSTDC_NAMES 0
-#ifndef _MSVC_TESTING_NVCC
-#include <sys/stat.h>
-#include <sys/timeb.h>
-#include <sys/utime.h>
-#endif // _MSVC_TESTING_NVCC
-#undef _CRT_DECLARE_NONSTDC_NAMES
-#endif // TRANSITION, OS-17090155 (UCRT)
-
+#ifndef _SILENCE_CXX17_C_HEADER_DEPRECATION_WARNING
 #define _SILENCE_CXX17_C_HEADER_DEPRECATION_WARNING
+#endif // !defined(_SILENCE_CXX17_C_HEADER_DEPRECATION_WARNING)
+
 #define _SILENCE_CXX20_CISO646_REMOVED_WARNING
 #define _SILENCE_EXPERIMENTAL_FILESYSTEM_DEPRECATION_WARNING
 #define _SILENCE_STDEXT_HASH_DEPRECATION_WARNINGS
@@ -49,6 +42,7 @@
 #include <numbers>
 #include <ratio>
 #include <source_location>
+#include <stdfloat>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -95,6 +89,7 @@
 #include <forward_list>
 #include <fstream>
 #include <functional>
+#include <generator>
 #include <hash_map>
 #include <hash_set>
 #include <iomanip>
@@ -106,12 +101,14 @@
 #include <list>
 #include <locale>
 #include <map>
+#include <mdspan>
 #include <memory>
 #include <memory_resource>
 #include <new>
 #include <numeric>
 #include <optional>
 #include <ostream>
+#include <print>
 #include <queue>
 #include <random>
 #include <ranges>
@@ -151,7 +148,7 @@
 #include <shared_mutex>
 #include <stop_token>
 #include <thread>
-#endif // _M_CEE_PURE
+#endif // !defined(_M_CEE_PURE)
 
 // Non-Core C Wrapper Headers
 #include <ccomplex>
@@ -162,18 +159,9 @@
 #include <ctgmath>
 
 // Non-Core Experimental Headers
-#include <experimental/deque>
 #include <experimental/filesystem>
-#include <experimental/forward_list>
-#include <experimental/list>
-#include <experimental/map>
-#include <experimental/set>
-#include <experimental/string>
-#include <experimental/unordered_map>
-#include <experimental/unordered_set>
-#include <experimental/vector>
 
-#endif // _CORE_HEADERS_ONLY
+#endif // !defined(_CORE_HEADERS_ONLY)
 
 #ifndef _MSVC_TESTING_NVCC
 #include <assert.h>
@@ -226,12 +214,12 @@
 #ifndef _CORE_HEADERS_ONLY
 #include <complex.h>
 #include <new.h>
-#endif // _CORE_HEADERS_ONLY
+#endif // !defined(_CORE_HEADERS_ONLY)
 
 #ifndef _M_CEE_PURE
 #include <fpieee.h>
-#endif // _M_CEE_PURE
-#endif // _MSVC_TESTING_NVCC
+#endif // !defined(_M_CEE_PURE)
+#endif // !defined(_MSVC_TESTING_NVCC)
 
 #if !(defined(__CUDACC__) && defined(__clang__))
 #pragma pop_macro("new")

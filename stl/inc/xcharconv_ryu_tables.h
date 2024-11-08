@@ -32,17 +32,16 @@
 // DEALINGS IN THE SOFTWARE.
 
 
-#pragma once
 #ifndef _XCHARCONV_RYU_TABLES_H
 #define _XCHARCONV_RYU_TABLES_H
 #include <yvals_core.h>
 #if _STL_COMPILER_PREPROCESSOR
 
-#include <cstdint>
-
 #if !_HAS_CXX17
 #error The contents of <charconv> are only available with C++17. (Also, you should not include this internal header.)
 #endif // !_HAS_CXX17
+
+#include <cstdint>
 
 #pragma pack(push, _CRT_PACKING)
 #pragma warning(push, _STL_WARNING_LEVEL)
@@ -63,7 +62,7 @@ _STD_BEGIN
 
 // A table of all two-digit numbers. This is used to speed up decimal digit
 // generation by copying pairs of digits into the final output.
-template <class _CharT> inline constexpr _CharT __DIGIT_TABLE[] = {_CharT{}};
+template <class _CharT> constexpr _CharT __DIGIT_TABLE[] = {_CharT{}};
 
 template <> inline constexpr char __DIGIT_TABLE<char>[200] = {
   '0','0','0','1','0','2','0','3','0','4','0','5','0','6','0','7','0','8','0','9',

@@ -9,8 +9,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
-import copy
-import errno
 import itertools
 import os
 import re
@@ -67,7 +65,7 @@ def _getEnvLst(sourcePath, localConfig):
 def _isLegalDirectory(sourcePath, test_subdirs):
     for prefix in test_subdirs:
         common = os.path.normpath(os.path.commonpath((sourcePath, prefix)))
-        if common == sourcePath or common == prefix:
+        if os.path.samefile(common, sourcePath) or os.path.samefile(common, prefix):
             return True
 
     return False
@@ -146,7 +144,7 @@ class STLTestFormat:
             env: Dict[str, str] = field(default_factory=dict)
 
         execDir, _ = test.getTempPaths()
-        shared = SharedState(None, execDir, copy.deepcopy(litConfig.test_env))
+        shared = SharedState(None, execDir, _mergeEnvironments(litConfig.test_env, test.env))
         shared.env['TMP'] = execDir
         shared.env['TEMP'] = execDir
         shared.env['TMPDIR'] = execDir
@@ -157,7 +155,8 @@ class STLTestFormat:
             ('Build', self.getBuildSteps(test, litConfig, shared), True),
             ('Intellisense response file', self.getIsenseRspFileSteps(test, litConfig, shared), False),
             ('Test setup', self.getTestSetupSteps(test, litConfig, shared), False),
-            ('Test', self.getTestSteps(test, litConfig, shared), False)]
+            ('Test', self.getTestSteps(test, litConfig, shared), False),
+            ('Clean', self.getCleanSteps(test, litConfig, shared), True)]
 
     def getBuildSetupSteps(self, test, litConfig, shared):
         shutil.rmtree(shared.execDir, ignore_errors=True)
@@ -167,7 +166,6 @@ class STLTestFormat:
         yield from []
 
     def getBuildSteps(self, test, litConfig, shared):
-        filename = test.path_in_suite[-1]
         _, tmpBase = test.getTempPaths()
 
         shouldFail = TestType.FAIL in test.testType
@@ -205,6 +203,11 @@ class STLTestFormat:
 
         shouldFail = TestType.FAIL in test.testType
         yield TestStep([shared.execFile], shared.execDir, shared.env, shouldFail)
+
+    def getCleanSteps(self, test, litConfig, shared):
+        shutil.rmtree(shared.execDir, ignore_errors=True)
+
+        yield from []
 
     def execute(self, test, litConfig):
         try:
@@ -244,7 +247,9 @@ class STLTestFormat:
             _, _, exception_traceback = sys.exc_info()
             filename = exception_traceback.tb_frame.f_code.co_filename
             line_number = exception_traceback.tb_lineno
-            litConfig.error(repr(e) + ' at ' + filename + ':' + str(line_number))
+            message = repr(e) + ' at ' + filename + ':' + str(line_number)
+            litConfig.error(message)
+            return (lit.Test.UNRESOLVED, message)
 
 
 class LibcxxTestFormat(STLTestFormat):
